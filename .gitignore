@@ -1,0 +1,4 @@
+/irc-news
+*.log
+*.prof
+.*
