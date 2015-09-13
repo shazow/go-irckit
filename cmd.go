@@ -18,8 +18,8 @@ var version string = "dev"
 
 // Options contains the flag options
 type Options struct {
-	Bind    string `long:"bind" description:"Bind address to listen on." default:":6667"`
-	Pprof   string `long:"pprof" description:"Bind address to serve pprof for profiling."`
+	Bind    string `long:"bind" description:"Bind address to listen on." value-name:"[HOST]:PORT" default:":6667"`
+	Pprof   string `long:"pprof" description:"Bind address to serve pprof for profiling." value-name:"[HOST]:PORT"`
 	Verbose []bool `short:"v" long:"verbose" description:"Show verbose logging."`
 	Version bool   `long:"version"`
 }
@@ -49,9 +49,9 @@ func main() {
 		os.Exit(0)
 	}
 
-	if options.Pprof {
+	if options.Pprof != "" {
 		go func() {
-			fmt.Println(http.ListenAndServe(options.Pprof), nil))
+			fmt.Println(http.ListenAndServe(options.Pprof, nil))
 		}()
 	}
 
@@ -71,7 +71,6 @@ func main() {
 	defer socket.Close()
 
 	h := NewHost()
-	h.Debug = logLevel == log.Debug
 	go h.Start(socket)
 
 	fmt.Printf("Listening for connections on %v\n", socket.Addr().String())
