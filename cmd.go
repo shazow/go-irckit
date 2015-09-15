@@ -10,6 +10,8 @@ import (
 	"github.com/alexcesaro/log"
 	"github.com/alexcesaro/log/golog"
 	"github.com/jessevdk/go-flags"
+	"github.com/shazow/irc-news/server"
+	"github.com/shazow/irc-news/user"
 )
 import _ "net/http/pprof"
 
@@ -62,7 +64,10 @@ func main() {
 	}
 
 	logLevel := logLevels[numVerbose]
-	SetLogger(golog.New(os.Stderr, logLevel))
+	logger := golog.New(os.Stderr, logLevel)
+	SetLogger(logger)
+	user.SetLogger(logger)
+	server.SetLogger(logger)
 
 	socket, err := net.Listen("tcp", options.Bind)
 	if err != nil {

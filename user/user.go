@@ -42,6 +42,17 @@ type user struct {
 	name Name
 }
 
+func (user *user) Encode(msg *irc.Message) (err error) {
+	logger.Debugf("-> %s", msg)
+	return user.Encoder.Encode(msg)
+}
+
+func (user *user) Decode() (*irc.Message, error) {
+	msg, err := user.Decoder.Decode()
+	logger.Debugf("<- %s", msg)
+	return msg, err
+}
+
 func (user *user) ID() string {
 	return user.name.Nick
 }

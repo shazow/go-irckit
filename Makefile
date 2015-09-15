@@ -1,9 +1,11 @@
 BINARY = irc-news
 BIND = "localhost:6667"
 
+SOURCES = $(wildcard **/*.go)
+
 all: $(BINARY)
 
-$(BINARY): *.go
+$(BINARY): $(SOURCES)
 	go build -ldflags "-X main.version=`git describe --long --tags --dirty --always`" .
 
 deps:
