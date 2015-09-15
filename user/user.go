@@ -2,44 +2,68 @@ package user
 
 import (
 	"net"
+	"strings"
 	"time"
 
 	"github.com/sorcix/irc"
 )
 
-type Name struct {
+type Identity struct {
 	Nick    string // From NICK command
 	User    string // From USER command
 	Real    string // From USER command
+	Host    string
 	Changed time.Time
+}
+
+func (n Identity) ID() string {
+	return strings.ToLower(n.Nick)
+}
+
+func (n Identity) Prefix() *irc.Prefix {
+	return &irc.Prefix{
+		Name: n.Nick,
+		User: n.User,
+		Host: n.Host,
+	}
 }
 
 type User interface {
 	ID() string
-	Name() Name
-	SetName(Name)
+	Prefix() *irc.Prefix
+	Set(Identity)
 
 	// TODO: Implement timeout
 	Close() error
 
 	// irc.Encode, irc.Decoder
-	Encode(*irc.Message) (err error)
+	Encode(*irc.Message) error
 	Decode() (*irc.Message, error)
 }
 
 func New(conn net.Conn) User {
+	host := resolveHost(conn.RemoteAddr())
 	return &user{
-		Conn:    conn,
-		Encoder: irc.NewEncoder(conn),
-		Decoder: irc.NewDecoder(conn),
+		Identity: Identity{Host: host},
+		Conn:     conn,
+		Encoder:  irc.NewEncoder(conn),
+		Decoder:  irc.NewDecoder(conn),
 	}
 }
 
 type user struct {
+	Identity
 	net.Conn
 	*irc.Encoder
 	*irc.Decoder
-	name Name
+}
+
+func (user *user) Set(identity Identity) {
+	// TODO: Mutex?
+	if identity.Host == "" {
+		identity.Host = user.Identity.Host
+	}
+	user.Identity = identity
 }
 
 func (user *user) Encode(msg *irc.Message) (err error) {
@@ -53,15 +77,18 @@ func (user *user) Decode() (*irc.Message, error) {
 	return msg, err
 }
 
-func (user *user) ID() string {
-	return user.name.Nick
-}
+// resolveHost will convert an IP to a Hostname, but fall back to IP on error.
+func resolveHost(addr net.Addr) string {
+	s := addr.String()
+	ip, _, err := net.SplitHostPort(s)
+	if err != nil {
+		return s
+	}
 
-func (user *user) Name() Name {
-	return user.name
-}
+	names, err := net.LookupAddr(ip)
+	if err != nil {
+		return ip
+	}
 
-func (user *user) SetName(name Name) {
-	name.Changed = time.Now()
-	user.name = name
+	return strings.TrimSuffix(names[0], ".")
 }
