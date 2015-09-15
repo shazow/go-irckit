@@ -1,6 +1,11 @@
 package main
 
-import "net"
+import (
+	"net"
+
+	"github.com/shazow/irc-news/server"
+	"github.com/shazow/irc-news/user"
+)
 
 type Host interface {
 	Start(net.Listener) // Listen and accept connection, blocking.
@@ -8,12 +13,12 @@ type Host interface {
 
 func NewHost() Host {
 	return &host{
-		server: NewServer(),
+		server: server.New(),
 	}
 }
 
 type host struct {
-	server Server
+	server server.Server
 }
 
 func (h *host) Start(listener net.Listener) {
@@ -27,14 +32,8 @@ func (h *host) Start(listener net.Listener) {
 
 		// Goroutineify to resume accepting sockets early
 		go func() {
-			client := NewClient(conn)
-
-			err := client.Handshake()
-			if err != nil {
-				logger.Errorf("Failed to handshake: %v", err)
-				return
-			}
-			err = h.server.Join(client)
+			u := user.New(conn)
+			err = h.server.Join(u)
 			if err != nil {
 				logger.Errorf("Failed to join: %v", err)
 				return
