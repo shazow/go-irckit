@@ -29,15 +29,17 @@ func (n Identity) Prefix() *irc.Prefix {
 
 type User interface {
 	ID() string
-	Prefix() *irc.Prefix
+	Nick() string
 	Set(Identity)
+	Prefix() *irc.Prefix
 
-	// TODO: Implement timeout
+	// TODO: Implement timeout?
 	Close() error
 
-	// irc.Encode, irc.Decoder
-	Encode(*irc.Message) error
+	// irc.Encoder, irc.Decoder
 	Decode() (*irc.Message, error)
+	Encode(*irc.Message) error
+	EncodeMany(...*irc.Message) error
 }
 
 func New(conn net.Conn) User {
@@ -57,6 +59,10 @@ type user struct {
 
 	mu sync.Mutex
 	Identity
+}
+
+func (user *user) Nick() string {
+	return user.Identity.Nick
 }
 
 func (user *user) Set(identity Identity) {
@@ -79,6 +85,17 @@ func (user *user) Set(identity Identity) {
 func (user *user) Encode(msg *irc.Message) (err error) {
 	logger.Debugf("-> %s", msg)
 	return user.Encoder.Encode(msg)
+}
+
+// EncodeMany calls Encode for each msg until an err occurs, then returns
+func (user *user) EncodeMany(msgs ...*irc.Message) (err error) {
+	for _, msg := range msgs {
+		err := user.Encode(msg)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (user *user) Decode() (*irc.Message, error) {
