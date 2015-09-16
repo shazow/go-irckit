@@ -3,17 +3,16 @@ package user
 import (
 	"net"
 	"strings"
-	"time"
+	"sync"
 
 	"github.com/sorcix/irc"
 )
 
 type Identity struct {
-	Nick    string // From NICK command
-	User    string // From USER command
-	Real    string // From USER command
-	Host    string
-	Changed time.Time
+	Nick string // From NICK command
+	User string // From USER command
+	Real string // From USER command
+	Host string
 }
 
 func (n Identity) ID() string {
@@ -52,18 +51,29 @@ func New(conn net.Conn) User {
 }
 
 type user struct {
-	Identity
 	net.Conn
 	*irc.Encoder
 	*irc.Decoder
+
+	mu sync.Mutex
+	Identity
 }
 
 func (user *user) Set(identity Identity) {
-	// TODO: Mutex?
-	if identity.Host == "" {
-		identity.Host = user.Identity.Host
+	user.mu.Lock()
+	if identity.User != "" {
+		user.Identity.User = identity.User
 	}
-	user.Identity = identity
+	if identity.Nick != "" {
+		user.Identity.Nick = identity.Nick
+	}
+	if identity.Real != "" {
+		user.Identity.Real = identity.Real
+	}
+	if identity.Host != "" {
+		user.Identity.Host = identity.Host
+	}
+	user.mu.Unlock()
 }
 
 func (user *user) Encode(msg *irc.Message) (err error) {
