@@ -12,6 +12,7 @@ import (
 type Channel interface {
 	ID() string
 	Join(user.User) error
+	Message(from user.User, text string)
 	Names() []string
 }
 
@@ -34,6 +35,24 @@ func NewChannel(server Server, name string) Channel {
 
 func (ch *channel) ID() string {
 	return ID(ch.name)
+}
+
+func (ch *channel) Message(from user.User, text string) {
+	msg := &irc.Message{
+		Prefix:   from.Prefix(),
+		Command:  irc.PRIVMSG,
+		Params:   []string{ch.name},
+		Trailing: text,
+	}
+	ch.mu.RLock()
+	for _, to := range ch.users {
+		// TODO: Check err and kick failures?
+		if to == from {
+			continue
+		}
+		to.Encode(msg)
+	}
+	ch.mu.RUnlock()
 }
 
 func (ch *channel) Join(u user.User) error {
