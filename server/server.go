@@ -3,11 +3,11 @@ package server
 import (
 	"errors"
 	"fmt"
+	"net"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/shazow/irc-news/user"
 	"github.com/sorcix/irc"
 )
 
@@ -20,13 +20,15 @@ func ID(s string) string {
 }
 
 type Server interface {
-	Join(user.User) error
+	Connect(net.Conn) error
 	Prefix() *irc.Prefix
+	Channel(string) Channel
+	RemoveChannel(string) Channel
 }
 
 func New() Server {
 	return &server{
-		users:    map[string]user.User{},
+		users:    map[string]*User{},
 		channels: map[string]Channel{},
 		created:  time.Now(),
 	}
@@ -34,7 +36,7 @@ func New() Server {
 
 type server struct {
 	sync.RWMutex
-	users      map[string]user.User
+	users      map[string]*User
 	channels   map[string]Channel
 	prefix     *irc.Prefix
 	count      int
@@ -48,7 +50,7 @@ func (s *server) Prefix() *irc.Prefix {
 }
 
 // HasUser returns whether a given user is in the server.
-func (s *server) HasUser(nick string) (user.User, bool) {
+func (s *server) HasUser(nick string) (*User, bool) {
 	s.RLock()
 	u, exists := s.users[ID(nick)]
 	s.RUnlock()
@@ -77,8 +79,22 @@ func (s *server) Channel(name string) Channel {
 	return ch
 }
 
-// Join starts the handshake for a new user.User and returns when complete or failed.
-func (s *server) Join(u user.User) error {
+// CloseChannel will evict members and remove from the server's storage.
+func (s *server) RemoveChannel(name string) Channel {
+	s.Lock()
+	id := ID(name)
+	ch, ok := s.channels[id]
+	if !ok {
+		return nil
+	}
+	delete(s.channels, id)
+	s.Unlock()
+	return ch
+}
+
+// Connect starts the handshake for a new User and returns when complete or failed.
+func (s *server) Connect(conn net.Conn) error {
+	u := NewUser(conn)
 	err := s.handshake(u)
 	if err != nil {
 		u.Close()
@@ -89,15 +105,15 @@ func (s *server) Join(u user.User) error {
 }
 
 // Leave will remove the user from all channels.
-func (s *server) Leave(u user.User, message string) {
+func (s *server) Leave(u *User, message string) {
 	s.Lock()
 	defer s.Unlock()
 
 	delete(s.users, u.ID())
-	for _, ch := range s.channels {
-		// XXX: Only part from channels that the user is in
+	for _, ch := range u.Channels {
 		ch.Part(u, message)
 	}
+	u.Channels = map[string]Channel{}
 }
 
 func (s *server) guestNick() string {
@@ -109,7 +125,7 @@ func (s *server) guestNick() string {
 }
 
 // names lists all names for a given channel
-func (s *server) names(u user.User, channels ...string) []*irc.Message {
+func (s *server) names(u *User, channels ...string) []*irc.Message {
 	// TODO: Support full list?
 	r := []*irc.Message{}
 	for _, channel := range channels {
@@ -120,12 +136,12 @@ func (s *server) names(u user.User, channels ...string) []*irc.Message {
 		msg := irc.Message{
 			Prefix:   s.Prefix(),
 			Command:  irc.RPL_NAMREPLY,
-			Params:   []string{u.Nick(), "=", channel},
+			Params:   []string{u.Nick, "=", channel},
 			Trailing: strings.Join(ch.Names(), " "),
 		}
 		r = append(r, &msg)
 	}
-	endParams := []string{u.Nick()}
+	endParams := []string{u.Nick}
 	if len(channels) == 1 {
 		endParams = append(endParams, channels[0])
 	}
@@ -139,7 +155,7 @@ func (s *server) names(u user.User, channels ...string) []*irc.Message {
 	return r
 }
 
-func (s *server) handle(u user.User) {
+func (s *server) handle(u *User) {
 	var partMsg string
 	defer s.Leave(u, partMsg)
 
@@ -213,7 +229,7 @@ func (s *server) handle(u user.User) {
 				})
 				continue
 			}
-			err = u.EncodeMany(s.names(u, msg.Params[0])...)
+			err = u.Encode(s.names(u, msg.Params[0])...)
 		case irc.PRIVMSG:
 			if len(msg.Params) < 1 {
 				u.Encode(&irc.Message{
@@ -230,7 +246,7 @@ func (s *server) handle(u user.User) {
 				toUser.Encode(&irc.Message{
 					Prefix:   u.Prefix(),
 					Command:  irc.PRIVMSG,
-					Params:   []string{u.Nick()},
+					Params:   []string{u.Nick},
 					Trailing: msg.Trailing,
 				})
 			} else {
@@ -249,7 +265,7 @@ func (s *server) handle(u user.User) {
 	}
 }
 
-func (s *server) add(u user.User) (ok bool) {
+func (s *server) add(u *User) (ok bool) {
 	s.Lock()
 	defer s.Unlock()
 
@@ -262,58 +278,60 @@ func (s *server) add(u user.User) (ok bool) {
 	return true
 }
 
-func (s *server) handshake(u user.User) error {
+func (s *server) handshake(u *User) error {
 	// Read messages until we filled in USER details.
-	identity := user.Identity{}
 	for i := 5; i > 0; i-- {
 		// Consume 5 messages then give up.
 		msg, err := u.Decode()
 		if err != nil {
 			return err
 		}
+
 		if len(msg.Params) < 1 {
-			continue
-		}
-		switch msg.Command {
-		case irc.NICK:
-			identity.Nick = msg.Params[0]
-		case irc.USER:
-			identity.User = msg.Params[0]
-			identity.Real = msg.Trailing
-			if identity.Nick == "" {
-				identity.Nick = identity.User
-			}
-			// TODO: Rewrite this into a helper
-			u.Set(identity)
-			ok := s.add(u)
-			if !ok {
-				identity.Nick = s.guestNick()
-				u.EncodeMany(
-					&irc.Message{
-						Prefix:   s.Prefix(),
-						Command:  irc.ERR_NICKNAMEINUSE,
-						Params:   []string{u.Nick()},
-						Trailing: "Nickname is already in use",
-					},
-					&irc.Message{
-						Prefix:  u.Prefix(),
-						Command: irc.NICK,
-						Params:  []string{identity.Nick},
-					},
-				)
-				u.Set(identity)
-				ok = s.add(u)
-			}
-			if !ok {
-				return ErrHandshakeFailed
-			}
-			return u.Encode(&irc.Message{
-				Prefix:   s.Prefix(),
-				Command:  irc.RPL_WELCOME,
-				Params:   []string{identity.User},
-				Trailing: fmt.Sprintf("Welcome!"),
+			u.Encode(&irc.Message{
+				Prefix:  s.Prefix(),
+				Command: irc.ERR_NEEDMOREPARAMS,
+				Params:  []string{msg.Command},
 			})
 		}
+
+		switch msg.Command {
+		case irc.NICK:
+			u.Nick = msg.Params[0]
+		case irc.USER:
+			u.User = msg.Params[0]
+			u.Real = msg.Trailing
+			if u.Nick == "" {
+				u.Nick = u.User
+			}
+		}
+
+		if u.Nick == "" || u.User == "" {
+			// Wait for both to be set before proceeding
+			continue
+		}
+
+		ok := s.add(u)
+		if !ok {
+			u.Encode(
+				&irc.Message{
+					Prefix:   s.Prefix(),
+					Command:  irc.ERR_NICKNAMEINUSE,
+					Params:   []string{u.Nick},
+					Trailing: "Nickname is already in use",
+				},
+			)
+			continue
+		}
+
+		return u.Encode(
+			&irc.Message{
+				Prefix:   s.Prefix(),
+				Command:  irc.RPL_WELCOME,
+				Params:   []string{u.Nick},
+				Trailing: fmt.Sprintf("Welcome!"),
+			},
+		)
 	}
 	return ErrHandshakeFailed
 }

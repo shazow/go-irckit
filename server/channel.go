@@ -1,36 +1,38 @@
 package server
 
 import (
+	"io"
 	"strings"
 	"sync"
-
-	"github.com/shazow/irc-news/user"
 
 	"github.com/sorcix/irc"
 )
 
 type Channel interface {
 	ID() string
-	Join(user.User) error
-	Part(u user.User, text string)
-	Message(from user.User, text string)
+	Join(*User) error
+	Part(u *User, text string)
+	Message(from *User, text string)
 	Names() []string
+
+	io.Closer
 }
 
 type channel struct {
-	server Server
-	name   string
+	server    Server
+	name      string
+	keepEmpty bool // Skip removing channel when empty?
 
 	mu    sync.RWMutex
 	topic string
-	users map[string]user.User
+	users map[string]*User
 }
 
 func NewChannel(server Server, name string) Channel {
 	return &channel{
 		server: server,
 		name:   name,
-		users:  map[string]user.User{},
+		users:  map[string]*User{},
 	}
 }
 
@@ -38,7 +40,7 @@ func (ch *channel) ID() string {
 	return ID(ch.name)
 }
 
-func (ch *channel) Message(from user.User, text string) {
+func (ch *channel) Message(from *User, text string) {
 	msg := &irc.Message{
 		Prefix:   from.Prefix(),
 		Command:  irc.PRIVMSG,
@@ -48,7 +50,7 @@ func (ch *channel) Message(from user.User, text string) {
 	ch.mu.RLock()
 	for _, to := range ch.users {
 		// TODO: Check err and kick failures?
-		if to == from {
+		if to.Nick == from.Nick {
 			continue
 		}
 		to.Encode(msg)
@@ -57,7 +59,7 @@ func (ch *channel) Message(from user.User, text string) {
 }
 
 // Leave will remove the user from the channel and emit a PART message.
-func (ch *channel) Part(u user.User, text string) {
+func (ch *channel) Part(u *User, text string) {
 	msg := &irc.Message{
 		Prefix:   u.Prefix(),
 		Command:  irc.PART,
@@ -79,11 +81,29 @@ func (ch *channel) Part(u user.User, text string) {
 		to.Encode(msg)
 	}
 	delete(ch.users, u.ID())
+	if !ch.keepEmpty && len(ch.users) == 0 && ch.server != nil {
+		ch.server.RemoveChannel(ch.name)
+		ch.server = nil
+	}
 	ch.mu.Unlock()
-	// XXX: Destroy channel when the final user leaves.
 }
 
-func (ch *channel) Join(u user.User) error {
+// Close will evict all users in the channel.
+func (ch *channel) Close() error {
+	ch.mu.Lock()
+	for _, to := range ch.users {
+		to.Encode(&irc.Message{
+			Prefix:  to.Prefix(),
+			Command: irc.PART,
+			Params:  []string{ch.name},
+		})
+	}
+	ch.users = map[string]*User{}
+	ch.mu.Unlock()
+	return nil
+}
+
+func (ch *channel) Join(u *User) error {
 	// TODO: Check if user is already here?
 
 	var err error
@@ -107,16 +127,16 @@ func (ch *channel) Join(u user.User) error {
 		topic = "No topic is set"
 	}
 
-	err = u.EncodeMany(
+	err = u.Encode(
 		&irc.Message{
 			Prefix:   ch.server.Prefix(),
 			Command:  irc.RPL_NAMREPLY,
-			Params:   []string{u.Nick(), "=", ch.name},
+			Params:   []string{u.Nick, "=", ch.name},
 			Trailing: strings.Join(ch.Names(), " "),
 		},
 		&irc.Message{
 			Prefix:   ch.server.Prefix(),
-			Params:   []string{u.Nick()},
+			Params:   []string{u.Nick},
 			Command:  irc.RPL_ENDOFNAMES,
 			Trailing: "End of /NAMES list.",
 		},
@@ -136,7 +156,7 @@ func (ch channel) Names() []string {
 
 	names := make([]string, 0, len(ch.users))
 	for _, u := range ch.users {
-		names = append(names, u.Nick())
+		names = append(names, u.Nick)
 	}
 
 	return names

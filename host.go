@@ -4,7 +4,6 @@ import (
 	"net"
 
 	"github.com/shazow/irc-news/server"
-	"github.com/shazow/irc-news/user"
 )
 
 type Host interface {
@@ -32,8 +31,7 @@ func (h *host) Start(listener net.Listener) {
 
 		// Goroutineify to resume accepting sockets early
 		go func() {
-			u := user.New(conn)
-			err = h.server.Join(u)
+			err = h.server.Connect(conn)
 			if err != nil {
 				logger.Errorf("Failed to join: %v", err)
 				return
