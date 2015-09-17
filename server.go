@@ -91,6 +91,7 @@ func (s *server) RenameUser(u *User, newNick string) {
 	}
 	u.Encode(changeMsg)
 	u.ForSeen(func(other *User) error {
+		// XXX: Pretty sure this is bugged, need to write a test.
 		other.Encode(changeMsg)
 		return nil
 	})
@@ -173,6 +174,7 @@ func (s *server) names(u *User, channels ...string) []*irc.Message {
 		if !exists {
 			continue
 		}
+		// FIXME: This needs to be broken up into multiple messages to fit <510 chars
 		msg := irc.Message{
 			Prefix:   s.Prefix(),
 			Command:  irc.RPL_NAMREPLY,
@@ -185,7 +187,6 @@ func (s *server) names(u *User, channels ...string) []*irc.Message {
 	if len(channels) == 1 {
 		endParams = append(endParams, channels[0])
 	}
-	// FIXME: Do we need to return an ENDOFNAMES for each channel when there are >1 queried?
 	r = append(r, &irc.Message{
 		Prefix:   s.Prefix(),
 		Params:   endParams,
