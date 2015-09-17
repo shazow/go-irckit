@@ -10,7 +10,8 @@ import (
 	"github.com/alexcesaro/log"
 	"github.com/alexcesaro/log/golog"
 	"github.com/jessevdk/go-flags"
-	"github.com/shazow/irc-news/server"
+
+	"github.com/shazow/go-irckit"
 )
 import _ "net/http/pprof"
 
@@ -24,7 +25,7 @@ var logger log.Logger = log.NullLogger
 type Options struct {
 	Bind    string `long:"bind" description:"Bind address to listen on." value-name:"[HOST]:PORT" default:":6667"`
 	Pprof   string `long:"pprof" description:"Bind address to serve pprof for profiling." value-name:"[HOST]:PORT"`
-	Name    string `long:"name" description:"Server name." default:"irc-news"`
+	Name    string `long:"name" description:"Server name." default:"irckit-demo"`
 	Verbose []bool `short:"v" long:"verbose" description:"Show verbose logging."`
 	Version bool   `long:"version"`
 }
@@ -68,7 +69,7 @@ func main() {
 
 	logLevel := logLevels[numVerbose]
 	logger = golog.New(os.Stderr, logLevel)
-	server.SetLogger(logger)
+	irckit.SetLogger(logger)
 
 	socket, err := net.Listen("tcp", options.Bind)
 	if err != nil {
@@ -76,7 +77,7 @@ func main() {
 	}
 	defer socket.Close()
 
-	srv := server.New(options.Name)
+	srv := irckit.NewServer(options.Name)
 	go start(srv, socket)
 
 	fmt.Printf("Listening for connections on %v\n", socket.Addr().String())
@@ -91,7 +92,7 @@ func main() {
 	os.Exit(0)
 }
 
-func start(srv server.Server, socket net.Listener) {
+func start(srv irckit.Server, socket net.Listener) {
 	for {
 		conn, err := socket.Accept()
 		if err != nil {

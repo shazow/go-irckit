@@ -1,4 +1,4 @@
-package server
+package irckit
 
 import (
 	"errors"
@@ -26,7 +26,7 @@ type Server interface {
 	RemoveChannel(string) Channel
 }
 
-func New(name string) Server {
+func NewServer(name string) Server {
 	return &server{
 		name:     name,
 		users:    map[string]*User{},
