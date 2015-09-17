@@ -6,7 +6,7 @@ SOURCES = $(wildcard **/*.go)
 all: $(BINARY)
 
 $(BINARY): $(SOURCES)
-	go build -ldflags "-X main.version=`git describe --long --tags --dirty --always`" .
+	go build -ldflags "-X main.version=`git describe --long --tags --dirty --always`"
 
 deps:
 	go get ./...

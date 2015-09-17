@@ -88,6 +88,18 @@ func (s *server) Join(u user.User) error {
 	return nil
 }
 
+// Leave will remove the user from all channels.
+func (s *server) Leave(u user.User, message string) {
+	s.Lock()
+	defer s.Unlock()
+
+	delete(s.users, u.ID())
+	for _, ch := range s.channels {
+		// XXX: Only part from channels that the user is in
+		ch.Part(u, message)
+	}
+}
+
 func (s *server) guestNick() string {
 	s.Lock()
 	defer s.Unlock()
@@ -128,7 +140,8 @@ func (s *server) names(u user.User, channels ...string) []*irc.Message {
 }
 
 func (s *server) handle(u user.User) {
-	defer u.Close()
+	var partMsg string
+	defer s.Leave(u, partMsg)
 
 	for {
 		msg, err := u.Decode()
@@ -137,12 +150,36 @@ func (s *server) handle(u user.User) {
 			return
 		}
 		switch msg.Command {
+		case irc.PART:
+			if len(msg.Params) < 1 {
+				u.Encode(&irc.Message{
+					Prefix:  s.Prefix(),
+					Command: irc.ERR_NEEDMOREPARAMS,
+					Params:  []string{msg.Command},
+				})
+				continue
+			}
+			channels := strings.Split(msg.Params[0], ",")
+			for _, chName := range channels {
+				ch, exists := s.HasChannel(chName)
+				if !exists {
+					u.Encode(&irc.Message{
+						Prefix:   s.Prefix(),
+						Command:  irc.ERR_NOSUCHCHANNEL,
+						Params:   []string{chName},
+						Trailing: "No such channel",
+					})
+					continue
+				}
+				ch.Part(u, msg.Trailing)
+			}
 		case irc.QUIT:
 			err = u.Encode(&irc.Message{
 				Prefix:   s.Prefix(),
 				Command:  irc.ERROR,
 				Trailing: "You will be missed.",
 			})
+			partMsg = "quit"
 			return
 		case irc.PING:
 			err = u.Encode(&irc.Message{

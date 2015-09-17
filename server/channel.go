@@ -12,6 +12,7 @@ import (
 type Channel interface {
 	ID() string
 	Join(user.User) error
+	Part(u user.User, text string)
 	Message(from user.User, text string)
 	Names() []string
 }
@@ -53,6 +54,33 @@ func (ch *channel) Message(from user.User, text string) {
 		to.Encode(msg)
 	}
 	ch.mu.RUnlock()
+}
+
+// Leave will remove the user from the channel and emit a PART message.
+func (ch *channel) Part(u user.User, text string) {
+	msg := &irc.Message{
+		Prefix:   u.Prefix(),
+		Command:  irc.PART,
+		Params:   []string{ch.name},
+		Trailing: text,
+	}
+	ch.mu.Lock()
+	if _, ok := ch.users[u.ID()]; !ok {
+		ch.mu.Unlock()
+		u.Encode(&irc.Message{
+			Prefix:   ch.server.Prefix(),
+			Command:  irc.ERR_NOTONCHANNEL,
+			Params:   []string{ch.name},
+			Trailing: "You're not on that channel",
+		})
+		return
+	}
+	for _, to := range ch.users {
+		to.Encode(msg)
+	}
+	delete(ch.users, u.ID())
+	ch.mu.Unlock()
+	// XXX: Destroy channel when the final user leaves.
 }
 
 func (ch *channel) Join(u user.User) error {
