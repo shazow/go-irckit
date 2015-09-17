@@ -14,6 +14,7 @@ type Channel interface {
 	Part(u *User, text string)
 	Message(from *User, text string)
 	Names() []string
+	ForUser(func(*User) error) error
 
 	io.Closer
 }
@@ -23,16 +24,16 @@ type channel struct {
 	name      string
 	keepEmpty bool // Skip removing channel when empty?
 
-	mu    sync.RWMutex
-	topic string
-	users map[string]*User
+	mu       sync.RWMutex
+	topic    string
+	usersIdx map[*User]struct{}
 }
 
 func NewChannel(server Server, name string) Channel {
 	return &channel{
-		server: server,
-		name:   name,
-		users:  map[string]*User{},
+		server:   server,
+		name:     name,
+		usersIdx: map[*User]struct{}{},
 	}
 }
 
@@ -48,9 +49,9 @@ func (ch *channel) Message(from *User, text string) {
 		Trailing: text,
 	}
 	ch.mu.RLock()
-	for _, to := range ch.users {
+	for to := range ch.usersIdx {
 		// TODO: Check err and kick failures?
-		if to.Nick == from.Nick {
+		if to == from {
 			continue
 		}
 		to.Encode(msg)
@@ -67,7 +68,7 @@ func (ch *channel) Part(u *User, text string) {
 		Trailing: text,
 	}
 	ch.mu.Lock()
-	if _, ok := ch.users[u.ID()]; !ok {
+	if _, ok := ch.usersIdx[u]; !ok {
 		ch.mu.Unlock()
 		u.Encode(&irc.Message{
 			Prefix:   ch.server.Prefix(),
@@ -77,11 +78,11 @@ func (ch *channel) Part(u *User, text string) {
 		})
 		return
 	}
-	for _, to := range ch.users {
+	for to := range ch.usersIdx {
 		to.Encode(msg)
 	}
-	delete(ch.users, u.ID())
-	if !ch.keepEmpty && len(ch.users) == 0 && ch.server != nil {
+	delete(ch.usersIdx, u)
+	if !ch.keepEmpty && len(ch.usersIdx) == 0 && ch.server != nil {
 		ch.server.RemoveChannel(ch.name)
 		ch.server = nil
 	}
@@ -91,35 +92,48 @@ func (ch *channel) Part(u *User, text string) {
 // Close will evict all users in the channel.
 func (ch *channel) Close() error {
 	ch.mu.Lock()
-	for _, to := range ch.users {
+	for to := range ch.usersIdx {
 		to.Encode(&irc.Message{
 			Prefix:  to.Prefix(),
 			Command: irc.PART,
 			Params:  []string{ch.name},
 		})
 	}
-	ch.users = map[string]*User{}
+	ch.usersIdx = map[*User]struct{}{}
 	ch.mu.Unlock()
+	return nil
+}
+
+func (ch *channel) ForUser(fn func(*User) error) error {
+	for u := range ch.usersIdx {
+		err := fn(u)
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
 func (ch *channel) Join(u *User) error {
 	// TODO: Check if user is already here?
 
-	var err error
-	err = u.Encode(&irc.Message{
+	ch.mu.Lock()
+	if _, exists := ch.usersIdx[u]; exists {
+		ch.mu.Unlock()
+		return nil
+	}
+	topic := ch.topic
+	ch.usersIdx[u] = struct{}{}
+	ch.mu.Unlock()
+
+	msg := &irc.Message{
 		Prefix:  u.Prefix(),
 		Command: irc.JOIN,
 		Params:  []string{ch.name},
-	})
-	if err != nil {
-		return err
 	}
-
-	ch.mu.Lock()
-	topic := ch.topic
-	ch.users[u.ID()] = u
-	ch.mu.Unlock()
+	for to := range ch.usersIdx {
+		to.Encode(msg)
+	}
 
 	topicCmd := irc.RPL_TOPIC
 	if topic == "" {
@@ -127,7 +141,7 @@ func (ch *channel) Join(u *User) error {
 		topic = "No topic is set"
 	}
 
-	err = u.Encode(
+	err := u.Encode(
 		&irc.Message{
 			Prefix:   ch.server.Prefix(),
 			Command:  irc.RPL_NAMREPLY,
@@ -154,8 +168,8 @@ func (ch channel) Names() []string {
 	ch.mu.RLock()
 	defer ch.mu.RUnlock()
 
-	names := make([]string, 0, len(ch.users))
-	for _, u := range ch.users {
+	names := make([]string, 0, len(ch.usersIdx))
+	for u := range ch.usersIdx {
 		names = append(names, u.Nick)
 	}
 

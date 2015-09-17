@@ -24,6 +24,7 @@ var logger log.Logger = log.NullLogger
 type Options struct {
 	Bind    string `long:"bind" description:"Bind address to listen on." value-name:"[HOST]:PORT" default:":6667"`
 	Pprof   string `long:"pprof" description:"Bind address to serve pprof for profiling." value-name:"[HOST]:PORT"`
+	Name    string `long:"name" description:"Server name." default:"irc-news"`
 	Verbose []bool `short:"v" long:"verbose" description:"Show verbose logging."`
 	Version bool   `long:"version"`
 }
@@ -66,7 +67,7 @@ func main() {
 	}
 
 	logLevel := logLevels[numVerbose]
-	logger := golog.New(os.Stderr, logLevel)
+	logger = golog.New(os.Stderr, logLevel)
 	server.SetLogger(logger)
 
 	socket, err := net.Listen("tcp", options.Bind)
@@ -75,8 +76,8 @@ func main() {
 	}
 	defer socket.Close()
 
-	h := NewHost()
-	go h.Start(socket)
+	srv := server.New(options.Name)
+	go start(srv, socket)
 
 	fmt.Printf("Listening for connections on %v\n", socket.Addr().String())
 
@@ -86,5 +87,26 @@ func main() {
 
 	<-sig // Wait for ^C signal
 	fmt.Fprintln(os.Stderr, "Interrupt signal detected, shutting down.")
+	srv.Close()
 	os.Exit(0)
+}
+
+func start(srv server.Server, socket net.Listener) {
+	for {
+		conn, err := socket.Accept()
+		if err != nil {
+			logger.Errorf("Failed to accept connection: %v", err)
+			return
+		}
+
+		// Goroutineify to resume accepting sockets early
+		go func() {
+			logger.Infof("New connection: %s", conn.RemoteAddr())
+			err = srv.Connect(conn)
+			if err != nil {
+				logger.Errorf("Failed to join: %v", err)
+				return
+			}
+		}()
+	}
 }

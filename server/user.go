@@ -10,9 +10,11 @@ import (
 
 func NewUser(conn net.Conn) *User {
 	return &User{
-		Conn:    conn,
-		Encoder: irc.NewEncoder(conn),
-		Decoder: irc.NewDecoder(conn),
+		Conn:     conn,
+		Encoder:  irc.NewEncoder(conn),
+		Decoder:  irc.NewDecoder(conn),
+		Host:     "*",
+		Channels: map[Channel]struct{}{},
 	}
 }
 
@@ -27,7 +29,7 @@ type User struct {
 	Real string // From USER command
 	Host string
 
-	Channels map[string]Channel
+	Channels map[Channel]struct{}
 }
 
 func (u *User) ID() string {
@@ -40,6 +42,24 @@ func (u *User) Prefix() *irc.Prefix {
 		User: u.User,
 		Host: u.Host,
 	}
+}
+
+func (u *User) ForSeen(fn func(*User) error) error {
+	seen := map[*User]struct{}{}
+	seen[u] = struct{}{}
+	for ch := range u.Channels {
+		err := ch.ForUser(func(other *User) error {
+			if _, dupe := seen[other]; dupe {
+				return nil
+			}
+			seen[other] = struct{}{}
+			return fn(other)
+		})
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // EncodeMany calls Encode for each msg until an err occurs, then returns

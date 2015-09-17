@@ -13,21 +13,22 @@ import (
 
 var ErrHandshakeFailed = errors.New("handshake failed")
 
-const serverName = "irc-news"
-
 func ID(s string) string {
 	return strings.ToLower(s)
 }
 
 type Server interface {
+	Close() error
 	Connect(net.Conn) error
 	Prefix() *irc.Prefix
 	Channel(string) Channel
+	HasChannel(string) (Channel, bool)
 	RemoveChannel(string) Channel
 }
 
-func New() Server {
+func New(name string) Server {
 	return &server{
+		name:     name,
 		users:    map[string]*User{},
 		channels: map[string]Channel{},
 		created:  time.Now(),
@@ -35,18 +36,24 @@ func New() Server {
 }
 
 type server struct {
-	sync.RWMutex
-	users      map[string]*User
-	channels   map[string]Channel
-	prefix     *irc.Prefix
-	count      int
 	created    time.Time
+	name       string
 	inviteOnly bool
+
+	sync.RWMutex
+	count    int
+	users    map[string]*User
+	channels map[string]Channel
+}
+
+func (s *server) Close() error {
+	// TODO: Send notice or something?
+	return nil
 }
 
 // Prefix returns the server's command prefix string.
 func (s *server) Prefix() *irc.Prefix {
-	return &irc.Prefix{Name: serverName}
+	return &irc.Prefix{Name: s.name}
 }
 
 // HasUser returns whether a given user is in the server.
@@ -55,6 +62,38 @@ func (s *server) HasUser(nick string) (*User, bool) {
 	u, exists := s.users[ID(nick)]
 	s.RUnlock()
 	return u, exists
+}
+
+// Rename will attempt to rename the given user's Nick
+func (s *server) RenameUser(u *User, newNick string) {
+	s.Lock()
+	if _, exists := s.users[ID(newNick)]; exists {
+		s.Unlock()
+		u.Encode(&irc.Message{
+			Prefix:   s.Prefix(),
+			Command:  irc.ERR_NICKNAMEINUSE,
+			Params:   []string{newNick},
+			Trailing: "Nickname is already in use",
+		})
+		return
+	}
+
+	delete(s.users, u.ID())
+	oldPrefix := u.Prefix()
+	u.Nick = newNick
+	s.users[u.ID()] = u
+	s.Unlock()
+
+	changeMsg := &irc.Message{
+		Prefix:  oldPrefix,
+		Command: irc.NICK,
+		Params:  []string{newNick},
+	}
+	u.Encode(changeMsg)
+	u.ForSeen(func(other *User) error {
+		other.Encode(changeMsg)
+		return nil
+	})
 }
 
 // HasChannel returns whether a given channel already exists.
@@ -104,16 +143,17 @@ func (s *server) Connect(conn net.Conn) error {
 	return nil
 }
 
-// Leave will remove the user from all channels.
+// Leave will remove the user from all channels and disconnect.
 func (s *server) Leave(u *User, message string) {
 	s.Lock()
 	defer s.Unlock()
 
 	delete(s.users, u.ID())
-	for _, ch := range u.Channels {
+	for ch := range u.Channels {
 		ch.Part(u, message)
 	}
-	u.Channels = map[string]Channel{}
+	u.Channels = map[Channel]struct{}{}
+	u.Close()
 }
 
 func (s *server) guestNick() string {
@@ -190,12 +230,17 @@ func (s *server) handle(u *User) {
 				ch.Part(u, msg.Trailing)
 			}
 		case irc.QUIT:
-			err = u.Encode(&irc.Message{
+			partMsg = msg.Trailing
+			u.Encode(&irc.Message{
+				Prefix:   u.Prefix(),
+				Command:  irc.QUIT,
+				Trailing: partMsg,
+			})
+			u.Encode(&irc.Message{
 				Prefix:   s.Prefix(),
 				Command:  irc.ERROR,
 				Trailing: "You will be missed.",
 			})
-			partMsg = "quit"
 			return
 		case irc.PING:
 			err = u.Encode(&irc.Message{
@@ -257,6 +302,16 @@ func (s *server) handle(u *User) {
 					Trailing: "No such nick/channel",
 				})
 			}
+		case irc.NICK:
+			if len(msg.Params) < 1 {
+				u.Encode(&irc.Message{
+					Prefix:  s.Prefix(),
+					Command: irc.ERR_NEEDMOREPARAMS,
+					Params:  []string{msg.Command},
+				})
+				continue
+			}
+			s.RenameUser(u, msg.Params[0])
 		}
 		if err != nil {
 			logger.Errorf("handle encode error for %s: %s", u.ID(), err.Error())
@@ -279,6 +334,9 @@ func (s *server) add(u *User) (ok bool) {
 }
 
 func (s *server) handshake(u *User) error {
+	// Assign host
+	u.Host = resolveHost(u.RemoteAddr())
+
 	// Read messages until we filled in USER details.
 	for i := 5; i > 0; i-- {
 		// Consume 5 messages then give up.
@@ -293,6 +351,7 @@ func (s *server) handshake(u *User) error {
 				Command: irc.ERR_NEEDMOREPARAMS,
 				Params:  []string{msg.Command},
 			})
+			continue
 		}
 
 		switch msg.Command {
