@@ -8,20 +8,26 @@ import (
 	"github.com/sorcix/irc"
 )
 
-func NewUser(conn net.Conn) *User {
+// NewUser creates a *User, wrapping a connection with metadata we need for our server.
+func NewUser(c Conn) *User {
 	return &User{
-		Conn:     conn,
-		Encoder:  irc.NewEncoder(conn),
-		Decoder:  irc.NewDecoder(conn),
+		Conn:     c,
 		Host:     "*",
 		Channels: map[Channel]struct{}{},
 	}
 }
 
+// NewUserNet creates a *User from a net.Conn connection.
+func NewUserNet(c net.Conn) *User {
+	return NewUser(&conn{
+		Conn:    c,
+		Encoder: irc.NewEncoder(c),
+		Decoder: irc.NewDecoder(c),
+	})
+}
+
 type User struct {
-	net.Conn
-	*irc.Encoder
-	*irc.Decoder
+	Conn
 
 	sync.RWMutex
 	Nick string // From NICK command
@@ -66,7 +72,7 @@ func (u *User) ForSeen(fn func(*User) error) error {
 func (user *User) Encode(msgs ...*irc.Message) (err error) {
 	for _, msg := range msgs {
 		logger.Debugf("-> %s", msg)
-		err := user.Encoder.Encode(msg)
+		err := user.Conn.Encode(msg)
 		if err != nil {
 			return err
 		}
@@ -75,23 +81,7 @@ func (user *User) Encode(msgs ...*irc.Message) (err error) {
 }
 
 func (user *User) Decode() (*irc.Message, error) {
-	msg, err := user.Decoder.Decode()
+	msg, err := user.Conn.Decode()
 	logger.Debugf("<- %s", msg)
 	return msg, err
-}
-
-// resolveHost will convert an IP to a Hostname, but fall back to IP on error.
-func resolveHost(addr net.Addr) string {
-	s := addr.String()
-	ip, _, err := net.SplitHostPort(s)
-	if err != nil {
-		return s
-	}
-
-	names, err := net.LookupAddr(ip)
-	if err != nil {
-		return ip
-	}
-
-	return strings.TrimSuffix(names[0], ".")
 }

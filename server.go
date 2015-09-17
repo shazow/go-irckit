@@ -3,7 +3,6 @@ package irckit
 import (
 	"errors"
 	"fmt"
-	"net"
 	"strings"
 	"sync"
 	"time"
@@ -19,7 +18,7 @@ func ID(s string) string {
 
 type Server interface {
 	Close() error
-	Connect(net.Conn) error
+	Connect(*User) error
 	Prefix() *irc.Prefix
 	Channel(string) Channel
 	HasChannel(string) (Channel, bool)
@@ -133,8 +132,7 @@ func (s *server) RemoveChannel(name string) Channel {
 }
 
 // Connect starts the handshake for a new User and returns when complete or failed.
-func (s *server) Connect(conn net.Conn) error {
-	u := NewUser(conn)
+func (s *server) Connect(u *User) error {
 	err := s.handshake(u)
 	if err != nil {
 		u.Close()
@@ -336,7 +334,7 @@ func (s *server) add(u *User) (ok bool) {
 
 func (s *server) handshake(u *User) error {
 	// Assign host
-	u.Host = resolveHost(u.RemoteAddr())
+	u.Host = u.ResolveHost()
 
 	// Read messages until we filled in USER details.
 	for i := 5; i > 0; i-- {

@@ -103,7 +103,7 @@ func start(srv irckit.Server, socket net.Listener) {
 		// Goroutineify to resume accepting sockets early
 		go func() {
 			logger.Infof("New connection: %s", conn.RemoteAddr())
-			err = srv.Connect(conn)
+			err = srv.Connect(irckit.NewUserNet(conn))
 			if err != nil {
 				logger.Errorf("Failed to join: %v", err)
 				return
