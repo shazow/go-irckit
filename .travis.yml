@@ -1,0 +1,14 @@
+language: go
+
+notifications:
+  email: false
+
+install:
+  - go get -v github.com/GeertJohan/fgt github.com/golang/lint/golint ./...
+
+script:
+  - fgt golint
+  - make test
+
+go:
+  - 1.5

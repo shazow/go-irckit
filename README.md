@@ -4,7 +4,7 @@
 
 # go-irckit
 
-Minimal IRC server and client library in Go.
+Minimal IRC server (and maybe client) toolkit in Go.
 
 Built to experiment with the IRC protocol, mostly implementing the RFCs from scratch so don't expect it to be super-robust or correct.
 
