@@ -11,12 +11,14 @@ import (
 	"github.com/alexcesaro/log/golog"
 	"github.com/jessevdk/go-flags"
 	"github.com/shazow/irc-news/server"
-	"github.com/shazow/irc-news/user"
 )
 import _ "net/http/pprof"
 
 // version gets replaced during build
 var version string = "dev"
+
+// logger gets replaced by golog
+var logger log.Logger = log.NullLogger
 
 // Options contains the flag options
 type Options struct {
@@ -65,8 +67,6 @@ func main() {
 
 	logLevel := logLevels[numVerbose]
 	logger := golog.New(os.Stderr, logLevel)
-	SetLogger(logger)
-	user.SetLogger(logger)
 	server.SetLogger(logger)
 
 	socket, err := net.Listen("tcp", options.Bind)
