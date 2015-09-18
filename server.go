@@ -176,10 +176,10 @@ func (s *server) Leave(u *User, message string) {
 	defer s.Unlock()
 
 	delete(s.users, u.ID())
-	for ch := range u.Channels {
+	for ch := range u.channels {
 		ch.Part(u, message)
 	}
-	u.Channels = map[Channel]struct{}{}
+	u.channels = map[Channel]struct{}{}
 	u.Close()
 }
 

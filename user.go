@@ -13,7 +13,7 @@ func NewUser(c Conn) *User {
 	return &User{
 		Conn:     c,
 		Host:     "*",
-		Channels: map[Channel]struct{}{},
+		channels: map[Channel]struct{}{},
 	}
 }
 
@@ -35,7 +35,7 @@ type User struct {
 	Real string // From USER command
 	Host string
 
-	Channels map[Channel]struct{}
+	channels map[Channel]struct{}
 }
 
 func (u *User) ID() string {
@@ -54,12 +54,23 @@ func (u *User) String() string {
 	return u.Prefix().String()
 }
 
+func (u *User) Channels() []Channel {
+	u.RLock()
+	channels := make([]Channel, 0, len(u.channels))
+	for ch := range u.channels {
+		channels = append(channels, ch)
+	}
+	u.RUnlock()
+	return channels
+}
+
 func (u *User) VisibleTo() []*User {
 	seen := map[*User]struct{}{}
 	seen[u] = struct{}{}
 
+	channels := u.Channels()
 	num := 0
-	for ch := range u.Channels {
+	for _, ch := range channels {
 		// Don't include self
 		num += ch.Len()
 	}
@@ -71,7 +82,7 @@ func (u *User) VisibleTo() []*User {
 	}
 
 	// Get all unique users
-	for ch := range u.Channels {
+	for _, ch := range channels {
 		for _, other := range ch.Users() {
 			if _, dupe := seen[other]; dupe {
 				continue

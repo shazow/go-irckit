@@ -142,7 +142,7 @@ func (ch *channel) Join(u *User) error {
 	ch.usersIdx[u] = struct{}{}
 	ch.mu.Unlock()
 	u.Lock()
-	u.Channels[ch] = struct{}{}
+	u.channels[ch] = struct{}{}
 	u.Unlock()
 
 	msg := &irc.Message{

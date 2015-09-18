@@ -74,8 +74,8 @@ func TestServerMultiUser(t *testing.T) {
 	if !ok {
 		t.Fatal("server did not recognize user with nick: foo")
 	}
-	if len(u1.Channels) != 1 {
-		t.Errorf("expected 1 channel for foo; got: %v", u1.Channels)
+	if len(u1.Channels()) != 1 {
+		t.Errorf("expected 1 channel for foo; got: %v", u1.Channels())
 	}
 	channel := srv.Channel("#chat")
 	if channel.Len() != 2 {
