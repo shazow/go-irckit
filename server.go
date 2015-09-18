@@ -12,19 +12,42 @@ import (
 
 var ErrHandshakeFailed = errors.New("handshake failed")
 
+// ID will normalize a name to be used as a unique identifier for comparison.
 func ID(s string) string {
 	return strings.ToLower(s)
 }
 
 type Server interface {
+	// Close disconnects everyone.
 	Close() error
-	Connect(*User) error
+
+	// Prefix returns the prefix string sent by the server for server-origin messages.
 	Prefix() *irc.Prefix
+
+	// Connect starts the handshake for a new user, blocks until it's completed or failed with an error.
+	Connect(*User) error
+
+	// Leave removes the user from all the channels and disconnects.
+	Leave(*User, string)
+
+	// HasUser returns an existing User with a given Nick.
+	HasUser(string) (*User, bool)
+
+	// RenameUser changes the Nick of a User if the new name is available.
+	RenameUser(*User, string) bool
+
+	// Channel gets or creates a new channel with the given name.
 	Channel(string) Channel
+
+	// HasChannel returns an existing Channel with a given name.
 	HasChannel(string) (Channel, bool)
+
+	// RemoveChannel removes the channel with a given name and returns it if it existed.
+	// TODO: Return bool too? Or change HasChannel/HasUser to match this return style.
 	RemoveChannel(string) Channel
 }
 
+// NewServer creates a server with a given name.
 func NewServer(name string) Server {
 	return &server{
 		name:     name,
@@ -47,6 +70,7 @@ type server struct {
 
 func (s *server) Close() error {
 	// TODO: Send notice or something?
+	// TODO: Clear channels?
 	s.Lock()
 	for _, u := range s.users {
 		u.Close()
@@ -68,8 +92,8 @@ func (s *server) HasUser(nick string) (*User, bool) {
 	return u, exists
 }
 
-// Rename will attempt to rename the given user's Nick
-func (s *server) RenameUser(u *User, newNick string) {
+// Rename will attempt to rename the given user's Nick if it's available.
+func (s *server) RenameUser(u *User, newNick string) bool {
 	s.Lock()
 	if _, exists := s.users[ID(newNick)]; exists {
 		s.Unlock()
@@ -79,7 +103,7 @@ func (s *server) RenameUser(u *User, newNick string) {
 			Params:   []string{newNick},
 			Trailing: "Nickname is already in use",
 		})
-		return
+		return false
 	}
 
 	delete(s.users, u.ID())
@@ -94,11 +118,10 @@ func (s *server) RenameUser(u *User, newNick string) {
 		Params:  []string{newNick},
 	}
 	u.Encode(changeMsg)
-	u.ForSeen(func(other *User) error {
-		// XXX: Pretty sure this is bugged, need to write a test.
+	for _, other := range u.VisibleTo() {
 		other.Encode(changeMsg)
-		return nil
-	})
+	}
+	return true
 }
 
 // HasChannel returns whether a given channel already exists.

@@ -1,7 +1,6 @@
 package irckit
 
 import (
-	"io"
 	"sort"
 	"strings"
 	"sync"
@@ -9,15 +8,34 @@ import (
 	"github.com/sorcix/irc"
 )
 
+// Channel is a representation of a room in our server
 type Channel interface {
+	// ID is a normalized unique identifier for the channel
 	ID() string
-	Join(*User) error
-	Part(u *User, text string)
-	Message(from *User, text string)
-	Names() []string
-	ForUser(func(*User) error) error
 
-	io.Closer
+	// Names returns a sorted slice of Nicks in the channel
+	Names() []string
+
+	// Users returns a slice of Users in the channel.
+	Users() []*User
+
+	// Join introduces the User to the channel (handler for JOIN).
+	Join(u *User) error
+
+	// Part removes the User from the channel (handler for PART).
+	Part(u *User, text string)
+
+	// Message transmits a message from a User to the channel (handler for PRIVMSG).
+	Message(u *User, text string)
+
+	// Len returns the number of Users in the channel.
+	Len() int
+
+	// String returns the name of the channel
+	String() string
+
+	// Close evicts all users from the channel.
+	Close() error
 }
 
 type channel struct {
@@ -30,6 +48,7 @@ type channel struct {
 	usersIdx map[*User]struct{}
 }
 
+// NewChannel returns a Channel implementation for a given Server.
 func NewChannel(server Server, name string) Channel {
 	return &channel{
 		server:   server,
@@ -38,6 +57,11 @@ func NewChannel(server Server, name string) Channel {
 	}
 }
 
+func (ch *channel) String() string {
+	return ch.name
+}
+
+// ID returns a normalized unique identifier for the channel.
 func (ch *channel) ID() string {
 	return ID(ch.name)
 }
@@ -105,16 +129,7 @@ func (ch *channel) Close() error {
 	return nil
 }
 
-func (ch *channel) ForUser(fn func(*User) error) error {
-	for u := range ch.usersIdx {
-		err := fn(u)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
+// Join introduces the User to the channel (sends relevant messages, stores).
 func (ch *channel) Join(u *User) error {
 	// TODO: Check if user is already here?
 
@@ -126,6 +141,9 @@ func (ch *channel) Join(u *User) error {
 	topic := ch.topic
 	ch.usersIdx[u] = struct{}{}
 	ch.mu.Unlock()
+	u.Lock()
+	u.Channels[ch] = struct{}{}
+	u.Unlock()
 
 	msg := &irc.Message{
 		Prefix:  u.Prefix(),
@@ -165,16 +183,32 @@ func (ch *channel) Join(u *User) error {
 	return err
 }
 
-func (ch channel) Names() []string {
+// Users returns an unsorted slice of users who are in the channel.
+func (ch *channel) Users() []*User {
 	ch.mu.RLock()
-	names := make([]string, 0, len(ch.usersIdx))
+	users := make([]*User, 0, len(ch.usersIdx))
 	for u := range ch.usersIdx {
-		names = append(names, u.Nick)
+		users = append(users, u)
 	}
 	ch.mu.RUnlock()
+	return users
+}
 
+// Names returns a sorted slice of Nick strings of users who are in the channel.
+func (ch channel) Names() []string {
+	users := ch.Users()
+	names := make([]string, 0, len(users))
+	for _, u := range users {
+		names = append(names, u.Nick)
+	}
 	// TODO: Append in sorted order?
 	sort.Strings(names)
-
 	return names
+}
+
+// Len returns the number of users in the channel.
+func (ch *channel) Len() int {
+	ch.mu.RLock()
+	defer ch.mu.RUnlock()
+	return len(ch.usersIdx)
 }
