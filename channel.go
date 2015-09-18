@@ -2,6 +2,7 @@ package irckit
 
 import (
 	"io"
+	"sort"
 	"strings"
 	"sync"
 
@@ -166,12 +167,14 @@ func (ch *channel) Join(u *User) error {
 
 func (ch channel) Names() []string {
 	ch.mu.RLock()
-	defer ch.mu.RUnlock()
-
 	names := make([]string, 0, len(ch.usersIdx))
 	for u := range ch.usersIdx {
 		names = append(names, u.Nick)
 	}
+	ch.mu.RUnlock()
+
+	// TODO: Append in sorted order?
+	sort.Strings(names)
 
 	return names
 }

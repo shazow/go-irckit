@@ -8,8 +8,8 @@ import (
 )
 
 type mockConn struct {
-	send    chan<- *irc.Message
-	receive <-chan *irc.Message
+	send    chan *irc.Message
+	receive chan *irc.Message
 	host    string
 }
 
@@ -30,7 +30,15 @@ func (conn *mockConn) ResolveHost() string {
 	return conn.host
 }
 
-func NewUserMock(send chan<- *irc.Message, receive <-chan *irc.Message) *User {
+func NewConnMock(host string, capacity int) *mockConn {
+	return &mockConn{
+		send:    make(chan *irc.Message, capacity),
+		receive: make(chan *irc.Message, capacity),
+		host:    host,
+	}
+}
+
+func NewUserMock(send chan *irc.Message, receive chan *irc.Message) *User {
 	return NewUser(&mockConn{
 		send:    send,
 		receive: receive,
