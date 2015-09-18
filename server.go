@@ -47,6 +47,11 @@ type server struct {
 
 func (s *server) Close() error {
 	// TODO: Send notice or something?
+	s.Lock()
+	for _, u := range s.users {
+		u.Close()
+	}
+	s.Unlock()
 	return nil
 }
 
