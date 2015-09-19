@@ -318,7 +318,7 @@ func (s *server) handle(u *User) {
 				toUser.Encode(&irc.Message{
 					Prefix:   u.Prefix(),
 					Command:  irc.PRIVMSG,
-					Params:   []string{u.Nick},
+					Params:   []string{toUser.Nick},
 					Trailing: msg.Trailing,
 				})
 			} else {

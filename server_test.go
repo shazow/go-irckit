@@ -15,10 +15,10 @@ func expectReply(t *testing.T, conn *mockConn, expect string) {
 	select {
 	case msg := <-conn.send:
 		if msg.String() != expect {
-			t.Errorf("got %v; want %v", msg, expect)
+			t.Errorf("\ngot\t\t%q\nwant\t%q", msg, expect)
 		}
 	case <-time.After(expectTimeout):
-		t.Fatalf("timed out waiting for %v", expect)
+		t.Fatalf("timed out waiting for %q", expect)
 	}
 }
 
@@ -81,7 +81,6 @@ func TestServerMultiUser(t *testing.T) {
 	if channel.Len() != 2 {
 		t.Errorf("expected #chat to be len 2; got: %v", channel.Users())
 	}
-	t.Logf("%v", channel.Users())
 
 	users := u1.VisibleTo()
 	if len(users) != 1 {
@@ -94,4 +93,14 @@ func TestServerMultiUser(t *testing.T) {
 	c1.receive <- irc.ParseMessage("NICK foo_")
 	expectReply(t, c1, ":foo!root@client1 NICK foo_")
 	expectReply(t, c2, ":foo!root@client1 NICK foo_")
+
+	c2.receive <- irc.ParseMessage("PRIVMSG #chat :hello")
+	expectReply(t, c1, ":baz!root@client2 PRIVMSG #chat :hello")
+	// Note: baz doesn't get an echo back here
+	c1.receive <- irc.ParseMessage("PRIVMSG baz :sup?")
+	expectReply(t, c2, ":foo_!root@client1 PRIVMSG baz :sup?")
+
+	c1.receive <- irc.ParseMessage("PART #chat")
+	expectReply(t, c1, ":foo_!root@client1 PART #chat")
+	expectReply(t, c2, ":foo_!root@client1 PART #chat")
 }
