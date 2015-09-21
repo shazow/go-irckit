@@ -37,9 +37,21 @@ func (evt event) Server() Server        { return evt.server }
 func (evt event) Channel() Channel      { return evt.channel }
 func (evt event) User() *User           { return evt.user }
 func (evt event) Message() *irc.Message { return evt.message }
+func (evt event) String() string {
+	r := evt.Kind().String()
+	if u := evt.User(); u != nil {
+		r += " from " + u.String()
+	}
+	if ch := evt.Channel(); ch != nil {
+		r += " in " + ch.String()
+	}
+	return r
+}
 
 // Event is emitted by a Publisher.
 type Event interface {
+	// String returns a user-friendly presentation of the event.
+	String() string
 	// Kind is the event kind.
 	Kind() EventKind
 	// Server associated with the event (or nil).
@@ -64,7 +76,7 @@ type Publisher interface {
 	Publish(Event)
 }
 
-// NewPublisher creates a Publisher which blocks on all operations.
+// SyncPublisher creates a Publisher which blocks on all operations.
 func SyncPublisher() Publisher {
 	return &publisher{
 		subscribers: []chan<- Event{},
