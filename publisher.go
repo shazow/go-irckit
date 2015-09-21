@@ -1,0 +1,96 @@
+package irckit
+
+import (
+	"sync"
+
+	"github.com/sorcix/irc"
+)
+
+type EventKind int
+
+const (
+	_ EventKind = iota
+	// ConnectEvent is emitted when a User successfully connects and handshakes with a Server.
+	ConnectEvent
+	// QuitEvent is emitted when a User is disconnected from a Server.
+	QuitEvent
+	// JoinEvent is emitted when a User joins a Channel.
+	JoinEvent
+	// PartEvent is emitted when a User leaves a Channel.
+	PartEvent
+	// UserMsgEvent is emitted when a User sends a message to another User.
+	UserMsgEvent
+	// ChanMsgEvent is emitted when a User sends a message to a Channel.
+	ChanMsgEvent
+)
+
+type event struct {
+	kind    EventKind
+	server  Server
+	channel Channel
+	user    *User
+	message *irc.Message
+}
+
+func (evt event) Kind() EventKind       { return evt.kind }
+func (evt event) Server() Server        { return evt.server }
+func (evt event) Channel() Channel      { return evt.channel }
+func (evt event) User() *User           { return evt.user }
+func (evt event) Message() *irc.Message { return evt.message }
+
+// Event is emitted by a Publisher.
+type Event interface {
+	// Kind is the event kind.
+	Kind() EventKind
+	// Server associated with the event (or nil).
+	Server() Server
+	// Channel associated with the event (or nil).
+	Channel() Channel
+	// User associated with the event (or nil).
+	User() *User
+	// Message returns the original irc.Message that triggered the event (or nil).
+	Message() *irc.Message
+}
+
+// Publisher emits Events to existing subscribers.
+type Publisher interface {
+	// Subscribe registers channel to receive events. Will skip events if channel is full.
+	Subscribe(chan<- Event)
+
+	// Unsubscribe stops the channel from receiving further events. Returns false if channel was not subscribed to start with.
+	// TODO: Unsubcribe(chan<- Event) bool
+
+	// Publish emits the Event to all the subscribers.
+	Publish(Event)
+}
+
+// NewPublisher creates a Publisher which blocks on all operations.
+func SyncPublisher() Publisher {
+	return &publisher{
+		subscribers: []chan<- Event{},
+	}
+}
+
+type publisher struct {
+	// TODO: Could make a lock-free version of this with a goroutine+broadcast channel. Not sure it would be worthwhile though.
+	mu          sync.Mutex
+	subscribers []chan<- Event
+}
+
+func (pub *publisher) Subscribe(sub chan<- Event) {
+	pub.mu.Lock()
+	pub.subscribers = append(pub.subscribers, sub)
+	pub.mu.Unlock()
+}
+
+func (pub *publisher) Publish(evt Event) {
+	// TODO: Should this be non-blocking? Could do that with the broadcast channel.
+	pub.mu.Lock()
+	for _, sub := range pub.subscribers {
+		select {
+		case sub <- evt:
+		default: // Skip if full.
+		}
+	}
+	pub.mu.Unlock()
+}
