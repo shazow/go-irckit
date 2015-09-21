@@ -45,15 +45,18 @@ type Server interface {
 	// RemoveChannel removes the channel with a given name and returns it if it existed.
 	// TODO: Return bool too? Or change HasChannel/HasUser to match this return style.
 	RemoveChannel(string) Channel
+
+	Publisher
 }
 
 // NewServer creates a server with a given name.
 func NewServer(name string) Server {
 	return &server{
-		name:     name,
-		users:    map[string]*User{},
-		channels: map[string]Channel{},
-		created:  time.Now(),
+		name:      name,
+		users:     map[string]*User{},
+		channels:  map[string]Channel{},
+		created:   time.Now(),
+		Publisher: SyncPublisher(),
 	}
 }
 
@@ -66,6 +69,8 @@ type server struct {
 	count    int
 	users    map[string]*User
 	channels map[string]Channel
+
+	Publisher
 }
 
 func (s *server) Close() error {
@@ -167,10 +172,12 @@ func (s *server) Connect(u *User) error {
 		return err
 	}
 	go s.handle(u)
+	s.Publish(&event{ConnectEvent, s, nil, u, nil})
 	return nil
 }
 
 // Leave will remove the user from all channels and disconnect.
+// TODO: Rename to Quit
 func (s *server) Leave(u *User, message string) {
 	s.Lock()
 	defer s.Unlock()
@@ -255,6 +262,7 @@ func (s *server) handle(u *User) {
 					continue
 				}
 				ch.Part(u, msg.Trailing)
+				s.Publish(&event{PartEvent, s, ch, u, msg})
 			}
 		case irc.QUIT:
 			partMsg = msg.Trailing
@@ -268,6 +276,7 @@ func (s *server) handle(u *User) {
 				Command:  irc.ERROR,
 				Trailing: "You will be missed.",
 			})
+			s.Publish(&event{QuitEvent, s, nil, u, msg})
 			return
 		case irc.PING:
 			err = u.Encode(&irc.Message{
@@ -290,7 +299,11 @@ func (s *server) handle(u *User) {
 				})
 			} else {
 				channel := msg.Params[0]
-				s.Channel(channel).Join(u)
+				ch := s.Channel(channel)
+				err = ch.Join(u)
+				if err == nil {
+					s.Publish(&event{JoinEvent, s, ch, u, msg})
+				}
 			}
 		case irc.NAMES:
 			if len(msg.Params) < 1 {
@@ -314,6 +327,7 @@ func (s *server) handle(u *User) {
 			query := msg.Params[0]
 			if toChan, exists := s.HasChannel(query); exists {
 				toChan.Message(u, msg.Trailing)
+				s.Publish(&event{ChanMsgEvent, s, toChan, u, msg})
 			} else if toUser, exists := s.HasUser(query); exists {
 				toUser.Encode(&irc.Message{
 					Prefix:   u.Prefix(),
@@ -321,6 +335,7 @@ func (s *server) handle(u *User) {
 					Params:   []string{toUser.Nick},
 					Trailing: msg.Trailing,
 				})
+				s.Publish(&event{UserMsgEvent, s, nil, u, msg})
 			} else {
 				err = u.Encode(&irc.Message{
 					Prefix:   s.Prefix(),
