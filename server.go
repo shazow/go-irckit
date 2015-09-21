@@ -27,8 +27,8 @@ type Server interface {
 	// Connect starts the handshake for a new user, blocks until it's completed or failed with an error.
 	Connect(*User) error
 
-	// Leave removes the user from all the channels and disconnects.
-	Leave(*User, string)
+	// Quit removes the user from all the channels and disconnects.
+	Quit(*User, string)
 
 	// HasUser returns an existing User with a given Nick.
 	HasUser(string) (*User, bool)
@@ -176,9 +176,9 @@ func (s *server) Connect(u *User) error {
 	return nil
 }
 
-// Leave will remove the user from all channels and disconnect.
+// Quit will remove the user from all channels and disconnect.
 // TODO: Rename to Quit
-func (s *server) Leave(u *User, message string) {
+func (s *server) Quit(u *User, message string) {
 	s.Lock()
 	defer s.Unlock()
 
@@ -231,7 +231,7 @@ func (s *server) names(u *User, channels ...string) []*irc.Message {
 
 func (s *server) handle(u *User) {
 	var partMsg string
-	defer s.Leave(u, partMsg)
+	defer s.Quit(u, partMsg)
 
 	for {
 		msg, err := u.Decode()

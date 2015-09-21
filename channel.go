@@ -84,7 +84,7 @@ func (ch *channel) Message(from *User, text string) {
 	ch.mu.RUnlock()
 }
 
-// Leave will remove the user from the channel and emit a PART message.
+// Quit will remove the user from the channel and emit a PART message.
 func (ch *channel) Part(u *User, text string) {
 	msg := &irc.Message{
 		Prefix:   u.Prefix(),
