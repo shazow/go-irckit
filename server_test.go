@@ -22,15 +22,17 @@ func expectReply(t *testing.T, conn *mockConn, expect string) {
 	}
 }
 
-func expectEvent(t *testing.T, events <-chan Event, expect EventKind) {
+func expectEvent(t *testing.T, events <-chan Event, expect EventKind) Event {
 	select {
 	case evt := <-events:
 		if evt.Kind() != expect {
 			t.Errorf("got %q; expected %s", evt, expect)
 		}
+		return evt
 	case <-time.After(expectTimeout):
 		t.Fatalf("timed out waiting for %q", expect)
 	}
+	return nil
 }
 
 func TestServerWelcome(t *testing.T) {
