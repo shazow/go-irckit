@@ -52,21 +52,40 @@ type Server interface {
 	Publisher
 }
 
-// NewServer creates a server with a given name.
-func NewServer(name string) Server {
+// ServerConfig produces a Server setup with configuration options.
+type ServerConfig struct {
+	// Name is used as the prefix for the server.
+	Name string
+	// InviteOnly prevents regular users from joining and making new channels.
+	InviteOnly bool
+	// Publisher to use. If nil, a new SyncPublisher will be used.
+	Publisher Publisher
+}
+
+func (c ServerConfig) Server() Server {
+	publisher := c.Publisher
+	if publisher == nil {
+		publisher = SyncPublisher()
+	}
+
 	return &server{
-		name:      name,
+		config:    c,
 		users:     map[string]*User{},
 		channels:  map[string]Channel{},
 		created:   time.Now(),
-		Publisher: SyncPublisher(),
+		Publisher: publisher,
 	}
+
+}
+
+// NewServer creates a server.
+func NewServer(name string) Server {
+	return ServerConfig{Name: name}.Server()
 }
 
 type server struct {
-	created    time.Time
-	name       string
-	inviteOnly bool
+	config  ServerConfig
+	created time.Time
 
 	sync.RWMutex
 	count    int
@@ -89,7 +108,7 @@ func (s *server) Close() error {
 
 // Prefix returns the server's command prefix string.
 func (s *server) Prefix() *irc.Prefix {
-	return &irc.Prefix{Name: s.name}
+	return &irc.Prefix{Name: s.config.Name}
 }
 
 // HasUser returns whether a given user is in the server.
@@ -288,7 +307,7 @@ func (s *server) handle(u *User) {
 			err = u.Encode(&irc.Message{
 				Prefix:   s.Prefix(),
 				Command:  irc.PONG,
-				Params:   []string{s.name},
+				Params:   []string{s.config.Name},
 				Trailing: msg.Trailing,
 			})
 		case irc.JOIN:
@@ -298,7 +317,7 @@ func (s *server) handle(u *User) {
 					Command: irc.ERR_NEEDMOREPARAMS,
 					Params:  []string{msg.Command},
 				})
-			} else if s.inviteOnly {
+			} else if s.config.InviteOnly {
 				err = u.Encode(&irc.Message{
 					Prefix:   s.Prefix(),
 					Command:  irc.ERR_INVITEONLYCHAN,
