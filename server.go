@@ -305,11 +305,13 @@ func (s *server) handle(u *User) {
 					Trailing: "Cannot join channel (+i)",
 				})
 			} else {
-				channel := msg.Params[0]
-				ch := s.Channel(channel)
-				err = ch.Join(u)
-				if err == nil {
-					s.Publish(&event{JoinEvent, s, ch, u, msg})
+				channels := strings.Split(msg.Params[0], ",")
+				for _, channel := range channels {
+					ch := s.Channel(channel)
+					err = ch.Join(u)
+					if err == nil {
+						s.Publish(&event{JoinEvent, s, ch, u, msg})
+					}
 				}
 			}
 		case irc.NAMES:

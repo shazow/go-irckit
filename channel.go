@@ -163,6 +163,12 @@ func (ch *channel) Join(u *User) error {
 	err := u.Encode(
 		&irc.Message{
 			Prefix:   ch.server.Prefix(),
+			Command:  topicCmd,
+			Params:   []string{ch.name},
+			Trailing: topic,
+		},
+		&irc.Message{
+			Prefix:   ch.server.Prefix(),
 			Command:  irc.RPL_NAMREPLY,
 			Params:   []string{u.Nick, "=", ch.name},
 			Trailing: strings.Join(ch.Names(), " "),
@@ -172,12 +178,6 @@ func (ch *channel) Join(u *User) error {
 			Params:   []string{u.Nick},
 			Command:  irc.RPL_ENDOFNAMES,
 			Trailing: "End of /NAMES list.",
-		},
-		&irc.Message{
-			Prefix:   ch.server.Prefix(),
-			Command:  topicCmd,
-			Params:   []string{ch.name},
-			Trailing: topic,
 		},
 	)
 	return err

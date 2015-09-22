@@ -76,16 +76,16 @@ func TestServerMultiUser(t *testing.T) {
 
 	c1.receive <- irc.ParseMessage("JOIN #chat")
 	expectReply(t, c1, ":foo!root@client1 JOIN #chat")
+	expectReply(t, c1, ":testserver 331 #chat :No topic is set")
 	expectReply(t, c1, ":testserver 353 foo = #chat :foo")
 	expectReply(t, c1, ":testserver 366 foo :End of /NAMES list.")
-	expectReply(t, c1, ":testserver 331 #chat :No topic is set")
 	expectEvent(t, events, JoinEvent)
 
 	c2.receive <- irc.ParseMessage("JOIN #chat")
 	expectReply(t, c2, ":baz!root@client2 JOIN #chat")
+	expectReply(t, c2, ":testserver 331 #chat :No topic is set")
 	expectReply(t, c2, ":testserver 353 baz = #chat :baz foo")
 	expectReply(t, c2, ":testserver 366 baz :End of /NAMES list.")
-	expectReply(t, c2, ":testserver 331 #chat :No topic is set")
 	expectEvent(t, events, JoinEvent)
 
 	// c1 notification of c2
