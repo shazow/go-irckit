@@ -6,6 +6,7 @@ import (
 	"github.com/sorcix/irc"
 )
 
+//go:generate stringer -type=EventKind
 type EventKind int
 
 const (
