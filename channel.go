@@ -108,7 +108,7 @@ func (ch *channel) Part(u *User, text string) {
 	}
 	delete(ch.usersIdx, u)
 	if !ch.keepEmpty && len(ch.usersIdx) == 0 && ch.server != nil {
-		ch.server.RemoveChannel(ch.name)
+		ch.server.UnlinkChannel(ch)
 		ch.server = nil
 	}
 	ch.mu.Unlock()

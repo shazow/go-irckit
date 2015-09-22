@@ -34,6 +34,7 @@ type Server interface {
 	HasUser(string) (*User, bool)
 
 	// RenameUser changes the Nick of a User if the new name is available.
+	// Returns whether the rename was was successful.
 	RenameUser(*User, string) bool
 
 	// Channel gets or creates a new channel with the given name.
@@ -42,9 +43,11 @@ type Server interface {
 	// HasChannel returns an existing Channel with a given name.
 	HasChannel(string) (Channel, bool)
 
-	// RemoveChannel removes the channel with a given name and returns it if it existed.
-	// TODO: Return bool too? Or change HasChannel/HasUser to match this return style.
-	RemoveChannel(string) Channel
+	// UnlinkChannel removes the channel from the server's storage if it
+	// exists. Once removed, the server is free to create a fresh channel with
+	// the same ID. The server is not responsible for evicting members of an
+	// unlinked channel.
+	UnlinkChannel(Channel) bool
 
 	Publisher
 }
@@ -151,17 +154,16 @@ func (s *server) Channel(name string) Channel {
 	return ch
 }
 
-// CloseChannel will evict members and remove from the server's storage.
-func (s *server) RemoveChannel(name string) Channel {
+// UnlinkChannel unlinks the channel from the server's storage, returns whether it existed.
+func (s *server) UnlinkChannel(ch Channel) bool {
 	s.Lock()
-	id := ID(name)
-	ch, ok := s.channels[id]
-	if !ok {
-		return nil
+	chStored := s.channels[ch.ID()]
+	r := chStored == ch
+	if r {
+		delete(s.channels, ch.ID())
 	}
-	delete(s.channels, id)
 	s.Unlock()
-	return ch
+	return r
 }
 
 // Connect starts the handshake for a new User and returns when complete or failed.
