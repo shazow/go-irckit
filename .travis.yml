@@ -4,10 +4,9 @@ notifications:
   email: false
 
 install:
-  - go get -v github.com/GeertJohan/fgt github.com/golang/lint/golint ./...
+  - go get -v ./...
 
 script:
-  #- fgt golint  # TODO: Enable this once lint is fixed
   - make test
 
 go:
