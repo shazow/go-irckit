@@ -286,9 +286,10 @@ func (s *server) handle(u *User) {
 			return
 		case irc.PING:
 			err = u.Encode(&irc.Message{
-				Prefix:  s.Prefix(),
-				Command: irc.PONG,
-				Params:  msg.Params,
+				Prefix:   s.Prefix(),
+				Command:  irc.PONG,
+				Params:   []string{s.name},
+				Trailing: msg.Trailing,
 			})
 		case irc.JOIN:
 			if len(msg.Params) < 1 {
