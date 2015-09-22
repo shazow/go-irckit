@@ -110,6 +110,8 @@ func (user *User) Encode(msgs ...*irc.Message) (err error) {
 // Decode will receive and return a decoded message, or an error.
 func (user *User) Decode() (*irc.Message, error) {
 	msg, err := user.Conn.Decode()
-	logger.Debugf("<- %s", msg)
+	if err != nil {
+		logger.Debugf("<- %s", msg)
+	}
 	return msg, err
 }

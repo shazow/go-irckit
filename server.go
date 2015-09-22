@@ -241,6 +241,10 @@ func (s *server) handle(u *User) {
 			logger.Errorf("handle decode error for %s: %s", u.ID(), err.Error())
 			return
 		}
+		if msg == nil {
+			logger.Debugf("ignoring empty message from: %s", u)
+			continue
+		}
 		switch msg.Command {
 		case irc.PART:
 			if len(msg.Params) < 1 {
