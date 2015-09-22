@@ -242,7 +242,7 @@ func (s *server) handle(u *User) {
 			return
 		}
 		if msg == nil {
-			logger.Debugf("ignoring empty message from: %s", u)
+			// Ignore empty messages
 			continue
 		}
 		switch msg.Command {
