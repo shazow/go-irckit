@@ -23,6 +23,8 @@ const (
 	UserMsgEvent
 	// ChanMsgEvent is emitted when a User sends a message to a Channel.
 	ChanMsgEvent
+	// EmptyChanEvent is emitted when the last User leaves a Channel.
+	EmptyChanEvent
 )
 
 type event struct {
@@ -75,6 +77,9 @@ type Publisher interface {
 
 	// Publish emits the Event to all the subscribers.
 	Publish(Event)
+
+	// Close will close all the subscribing channels.
+	Close() error
 }
 
 // SyncPublisher creates a Publisher which blocks on all operations.
@@ -106,4 +111,14 @@ func (pub *publisher) Publish(evt Event) {
 		}
 	}
 	pub.mu.Unlock()
+}
+
+func (pub *publisher) Close() error {
+	pub.mu.Lock()
+	for _, sub := range pub.subscribers {
+		close(sub)
+	}
+	pub.subscribers = []chan<- Event{}
+	pub.mu.Unlock()
+	return nil
 }

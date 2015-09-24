@@ -12,17 +12,21 @@ import (
 
 var ErrHandshakeFailed = errors.New("handshake failed")
 
+const handshakeMsgTolerance = 5
+
 // ID will normalize a name to be used as a unique identifier for comparison.
 func ID(s string) string {
 	return strings.ToLower(s)
 }
 
-type Server interface {
-	// Close disconnects everyone.
-	Close() error
-
-	// Prefix returns the prefix string sent by the server for server-origin messages.
+type Prefixer interface {
+	// Prefix returns a prefix configuration for the origin of the message.
 	Prefix() *irc.Prefix
+}
+
+type Server interface {
+	Prefixer
+	Publisher
 
 	// Connect starts the handshake for a new user, blocks until it's completed or failed with an error.
 	Connect(*User) error
@@ -48,8 +52,6 @@ type Server interface {
 	// the same ID. The server is not responsible for evicting members of an
 	// unlinked channel.
 	UnlinkChannel(Channel) bool
-
-	Publisher
 }
 
 // ServerConfig produces a Server setup with configuration options.
@@ -60,6 +62,8 @@ type ServerConfig struct {
 	InviteOnly bool
 	// Publisher to use. If nil, a new SyncPublisher will be used.
 	Publisher Publisher
+	// DiscardEmpty setting will start a goroutine to discard empty channels.
+	DiscardEmpty bool
 }
 
 func (c ServerConfig) Server() Server {
@@ -68,14 +72,19 @@ func (c ServerConfig) Server() Server {
 		publisher = SyncPublisher()
 	}
 
-	return &server{
+	srv := &server{
 		config:    c,
 		users:     map[string]*User{},
 		channels:  map[string]Channel{},
 		created:   time.Now(),
 		Publisher: publisher,
 	}
+	if c.DiscardEmpty {
+		srv.channelEvents = make(chan Event, 1)
+		go srv.cleanupEmpty()
+	}
 
+	return srv
 }
 
 // NewServer creates a server.
@@ -88,9 +97,10 @@ type server struct {
 	created time.Time
 
 	sync.RWMutex
-	count    int
-	users    map[string]*User
-	channels map[string]Channel
+	count         int
+	users         map[string]*User
+	channels      map[string]Channel
+	channelEvents chan Event
 
 	Publisher
 }
@@ -102,6 +112,7 @@ func (s *server) Close() error {
 	for _, u := range s.users {
 		u.Close()
 	}
+	s.Publisher.Close()
 	s.Unlock()
 	return nil
 }
@@ -168,9 +179,35 @@ func (s *server) Channel(name string) Channel {
 		ch = NewChannel(s, name)
 		id = ch.ID()
 		s.channels[id] = ch
+		if s.config.DiscardEmpty {
+			ch.Subscribe(s.channelEvents)
+		}
 	}
 	s.Unlock()
 	return ch
+}
+
+// cleanupEmpty receives Channel candidates for cleaning up and removes them if they're empty. (Blocking)
+func (s *server) cleanupEmpty() {
+	for evt := range s.channelEvents {
+		if evt.Kind() != EmptyChanEvent {
+			continue
+		}
+		ch := evt.Channel()
+		s.Lock()
+		if s.channels[ch.ID()] != ch {
+			// Not the same channel anymore, already been replaced.
+			s.Unlock()
+			continue
+		}
+		if ch.Len() != 0 {
+			// Not empty
+			s.Unlock()
+			continue
+		}
+		delete(s.channels, ch.ID())
+		s.Unlock()
+	}
 }
 
 // UnlinkChannel unlinks the channel from the server's storage, returns whether it existed.
@@ -198,17 +235,11 @@ func (s *server) Connect(u *User) error {
 }
 
 // Quit will remove the user from all channels and disconnect.
-// TODO: Rename to Quit
 func (s *server) Quit(u *User, message string) {
+	go u.Close()
 	s.Lock()
-	defer s.Unlock()
-
 	delete(s.users, u.ID())
-	for ch := range u.channels {
-		ch.Part(u, message)
-	}
-	u.channels = map[Channel]struct{}{}
-	u.Close()
+	s.Unlock()
 }
 
 func (s *server) guestNick() string {
@@ -408,7 +439,7 @@ func (s *server) handshake(u *User) error {
 	u.Host = u.ResolveHost()
 
 	// Read messages until we filled in USER details.
-	for i := 5; i > 0; i-- {
+	for i := handshakeMsgTolerance; i > 0; i-- {
 		// Consume 5 messages then give up.
 		msg, err := u.Decode()
 		if err != nil {

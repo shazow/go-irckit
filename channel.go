@@ -10,6 +10,9 @@ import (
 
 // Channel is a representation of a room in our server
 type Channel interface {
+	Prefixer
+	Publisher
+
 	// ID is a normalized unique identifier for the channel
 	ID() string
 
@@ -18,6 +21,9 @@ type Channel interface {
 
 	// Users returns a slice of Users in the channel.
 	Users() []*User
+
+	// Invite prompts the User to join the Channel on behalf of Prefixer.
+	Invite(from Prefixer, u *User) error
 
 	// Join introduces the User to the channel (handler for JOIN).
 	Join(u *User) error
@@ -33,15 +39,12 @@ type Channel interface {
 
 	// String returns the name of the channel
 	String() string
-
-	// Close evicts all users from the channel.
-	Close() error
 }
 
 type channel struct {
-	server    Server
-	name      string
-	keepEmpty bool // Skip removing channel when empty?
+	Prefixer
+	Publisher
+	name string
 
 	mu       sync.RWMutex
 	topic    string
@@ -49,11 +52,12 @@ type channel struct {
 }
 
 // NewChannel returns a Channel implementation for a given Server.
-func NewChannel(server Server, name string) Channel {
+func NewChannel(prefixer Prefixer, name string) Channel {
 	return &channel{
-		server:   server,
-		name:     name,
-		usersIdx: map[*User]struct{}{},
+		Prefixer:  prefixer,
+		Publisher: SyncPublisher(),
+		name:      name,
+		usersIdx:  map[*User]struct{}{},
 	}
 }
 
@@ -96,7 +100,7 @@ func (ch *channel) Part(u *User, text string) {
 	if _, ok := ch.usersIdx[u]; !ok {
 		ch.mu.Unlock()
 		u.Encode(&irc.Message{
-			Prefix:   ch.server.Prefix(),
+			Prefix:   ch.Prefix(),
 			Command:  irc.ERR_NOTONCHANNEL,
 			Params:   []string{ch.name},
 			Trailing: "You're not on that channel",
@@ -107,11 +111,11 @@ func (ch *channel) Part(u *User, text string) {
 		to.Encode(msg)
 	}
 	delete(ch.usersIdx, u)
-	if !ch.keepEmpty && len(ch.usersIdx) == 0 && ch.server != nil {
-		ch.server.UnlinkChannel(ch)
-		ch.server = nil
-	}
+	n := len(ch.usersIdx)
 	ch.mu.Unlock()
+	if n == 0 {
+		ch.Publish(&event{EmptyChanEvent, nil, ch, u, nil})
+	}
 }
 
 // Close will evict all users in the channel.
@@ -125,14 +129,27 @@ func (ch *channel) Close() error {
 		})
 	}
 	ch.usersIdx = map[*User]struct{}{}
+	ch.Publisher.Close()
 	ch.mu.Unlock()
 	return nil
+}
+
+// Invite prompts the User to join the Channel on behalf of Prefixer.
+func (ch *channel) Invite(from Prefixer, u *User) error {
+	err := u.Encode(&irc.Message{
+		Prefix:  from.Prefix(),
+		Command: irc.INVITE,
+		Params:  []string{u.Nick, ch.name},
+	})
+	if err != nil {
+		return err
+	}
+	return ch.Join(u)
 }
 
 // Join introduces the User to the channel (sends relevant messages, stores).
 func (ch *channel) Join(u *User) error {
 	// TODO: Check if user is already here?
-
 	ch.mu.Lock()
 	if _, exists := ch.usersIdx[u]; exists {
 		ch.mu.Unlock()
@@ -162,19 +179,19 @@ func (ch *channel) Join(u *User) error {
 
 	err := u.Encode(
 		&irc.Message{
-			Prefix:   ch.server.Prefix(),
+			Prefix:   ch.Prefix(),
 			Command:  topicCmd,
 			Params:   []string{ch.name},
 			Trailing: topic,
 		},
 		&irc.Message{
-			Prefix:   ch.server.Prefix(),
+			Prefix:   ch.Prefix(),
 			Command:  irc.RPL_NAMREPLY,
 			Params:   []string{u.Nick, "=", ch.name},
 			Trailing: strings.Join(ch.Names(), " "),
 		},
 		&irc.Message{
-			Prefix:   ch.server.Prefix(),
+			Prefix:   ch.Prefix(),
 			Params:   []string{u.Nick},
 			Command:  irc.RPL_ENDOFNAMES,
 			Trailing: "End of /NAMES list.",

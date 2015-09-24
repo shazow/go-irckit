@@ -24,6 +24,7 @@ to get a feel for what's prioritized.
   [rfc1459](https://tools.ietf.org/html/rfc1459),
   **[rfc2812](https://tools.ietf.org/html/rfc2812)**,
   [rfc2813](https://tools.ietf.org/html/rfc2813).
+  More modernly, [ircv3.net](http://ircv3.net/).
 
 ## License
 

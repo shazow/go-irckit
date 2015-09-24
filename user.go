@@ -26,6 +26,8 @@ func NewUserNet(c net.Conn) *User {
 	})
 }
 
+const defaultCloseMsg = "Closed."
+
 type User struct {
 	Conn
 
@@ -48,6 +50,17 @@ func (u *User) Prefix() *irc.Prefix {
 		User: u.User,
 		Host: u.Host,
 	}
+}
+
+func (u *User) Close() error {
+	u.Lock()
+	defer u.Unlock()
+
+	for ch := range u.channels {
+		ch.Part(u, defaultCloseMsg)
+	}
+	u.channels = map[Channel]struct{}{}
+	return u.Conn.Close()
 }
 
 func (u *User) String() string {
