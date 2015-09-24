@@ -25,6 +25,10 @@ const (
 	ChanMsgEvent
 	// EmptyChanEvent is emitted when the last User leaves a Channel.
 	EmptyChanEvent
+	// NewChanEvent is emitted when a new Channel is created.
+	NewChanEvent
+	// ShutdownEvent is emitted when the server shuts down.
+	ShutdownEvent
 )
 
 type event struct {
@@ -84,9 +88,7 @@ type Publisher interface {
 
 // SyncPublisher creates a Publisher which blocks on all operations.
 func SyncPublisher() Publisher {
-	return &publisher{
-		subscribers: []chan<- Event{},
-	}
+	return &publisher{}
 }
 
 type publisher struct {

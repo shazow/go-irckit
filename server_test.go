@@ -79,6 +79,7 @@ func TestServerMultiUser(t *testing.T) {
 	expectReply(t, c1, ":testserver 331 #chat :No topic is set")
 	expectReply(t, c1, ":testserver 353 foo = #chat :foo")
 	expectReply(t, c1, ":testserver 366 foo :End of /NAMES list.")
+	expectEvent(t, events, NewChanEvent)
 	expectEvent(t, events, JoinEvent)
 
 	c2.receive <- irc.ParseMessage("JOIN #chat")
@@ -127,4 +128,11 @@ func TestServerMultiUser(t *testing.T) {
 	expectReply(t, c1, ":foo_!root@client1 PART #chat")
 	expectReply(t, c2, ":foo_!root@client1 PART #chat")
 	expectEvent(t, events, PartEvent)
+
+	if len(u1.Channels()) != 0 {
+		t.Errorf("expected 0 channel for foo; got: %v", u1.Channels())
+	}
+	if channel.Len() != 1 {
+		t.Errorf("expected #chat to be len 1; got: %v", channel.Users())
+	}
 }

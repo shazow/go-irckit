@@ -22,6 +22,9 @@ type Channel interface {
 	// Users returns a slice of Users in the channel.
 	Users() []*User
 
+	// HasUser returns whether a User is in the channel.
+	HasUser(*User) bool
+
 	// Invite prompts the User to join the Channel on behalf of Prefixer.
 	Invite(from Prefixer, u *User) error
 
@@ -113,6 +116,9 @@ func (ch *channel) Part(u *User, text string) {
 	delete(ch.usersIdx, u)
 	n := len(ch.usersIdx)
 	ch.mu.Unlock()
+	u.Lock()
+	delete(u.channels, ch)
+	u.Unlock()
 	if n == 0 {
 		ch.Publish(&event{EmptyChanEvent, nil, ch, u, nil})
 	}
@@ -198,6 +204,13 @@ func (ch *channel) Join(u *User) error {
 		},
 	)
 	return err
+}
+
+func (ch *channel) HasUser(u *User) bool {
+	ch.mu.RLock()
+	_, ok := ch.usersIdx[u]
+	ch.mu.RUnlock()
+	return ok
 }
 
 // Users returns an unsorted slice of users who are in the channel.

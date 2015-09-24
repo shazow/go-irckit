@@ -4,9 +4,9 @@ package irckit
 
 import "fmt"
 
-const _EventKind_name = "ConnectEventQuitEventJoinEventPartEventUserMsgEventChanMsgEvent"
+const _EventKind_name = "ConnectEventQuitEventJoinEventPartEventUserMsgEventChanMsgEventEmptyChanEventNewChanEventShutdownEvent"
 
-var _EventKind_index = [...]uint8{0, 12, 21, 30, 39, 51, 63}
+var _EventKind_index = [...]uint8{0, 12, 21, 30, 39, 51, 63, 77, 89, 102}
 
 func (i EventKind) String() string {
 	i -= 1

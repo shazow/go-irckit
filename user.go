@@ -53,18 +53,20 @@ func (u *User) Prefix() *irc.Prefix {
 }
 
 func (u *User) Close() error {
-	u.Lock()
-	defer u.Unlock()
-
 	for ch := range u.channels {
 		ch.Part(u, defaultCloseMsg)
 	}
-	u.channels = map[Channel]struct{}{}
 	return u.Conn.Close()
 }
 
 func (u *User) String() string {
 	return u.Prefix().String()
+}
+
+func (u *User) NumChannels() int {
+	u.RLock()
+	defer u.RUnlock()
+	return len(u.channels)
 }
 
 func (u *User) Channels() []Channel {

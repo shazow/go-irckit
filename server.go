@@ -179,11 +179,14 @@ func (s *server) Channel(name string) Channel {
 		ch = NewChannel(s, name)
 		id = ch.ID()
 		s.channels[id] = ch
+		s.Unlock()
 		if s.config.DiscardEmpty {
 			ch.Subscribe(s.channelEvents)
 		}
+		s.Publish(&event{NewChanEvent, s, ch, nil, nil})
+	} else {
+		s.Unlock()
 	}
-	s.Unlock()
 	return ch
 }
 
