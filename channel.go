@@ -4,6 +4,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/sorcix/irc"
 )
@@ -15,6 +16,9 @@ type Channel interface {
 
 	// ID is a normalized unique identifier for the channel
 	ID() string
+
+	// Created returns the time when the Channel was created.
+	Created() time.Time
 
 	// Names returns a sorted slice of Nicks in the channel
 	Names() []string
@@ -37,6 +41,9 @@ type Channel interface {
 	// Message transmits a message from a User to the channel (handler for PRIVMSG).
 	Message(u *User, text string)
 
+	// Topic sets the topic of the channel (handler for TOPIC).
+	Topic(from Prefixer, text string)
+
 	// Unlink will disassociate the Channel from its Server.
 	Unlink()
 
@@ -49,8 +56,9 @@ type Channel interface {
 
 type channel struct {
 	Publisher
-	name   string
-	server Server
+	created time.Time
+	name    string
+	server  Server
 
 	mu       sync.RWMutex
 	topic    string
@@ -61,6 +69,7 @@ type channel struct {
 func NewChannel(server Server, name string) Channel {
 	return &channel{
 		Publisher: SyncPublisher(),
+		created:   time.Now(),
 		server:    server,
 		name:      name,
 		usersIdx:  map[*User]struct{}{},
@@ -73,6 +82,11 @@ func (ch channel) Prefix() *irc.Prefix {
 
 func (ch *channel) String() string {
 	return ch.name
+}
+
+// Created returns the time when the Channel was created.
+func (ch *channel) Created() time.Time {
+	return ch.created
 }
 
 // ID returns a normalized unique identifier for the channel.
@@ -166,6 +180,23 @@ func (ch *channel) Invite(from Prefixer, u *User) error {
 	return ch.Join(u)
 }
 
+// Topic sets the topic of the channel (handler for TOPIC).
+func (ch *channel) Topic(from Prefixer, text string) {
+	ch.mu.RLock()
+	ch.topic = text
+
+	msg := &irc.Message{
+		Prefix:   from.Prefix(),
+		Command:  irc.TOPIC,
+		Trailing: text,
+	}
+	for to := range ch.usersIdx {
+		to.Encode(msg)
+	}
+
+	ch.mu.RUnlock()
+}
+
 // Join introduces the User to the channel (sends relevant messages, stores).
 func (ch *channel) Join(u *User) error {
 	// TODO: Check if user is already here?
@@ -200,7 +231,7 @@ func (ch *channel) Join(u *User) error {
 		&irc.Message{
 			Prefix:   ch.Prefix(),
 			Command:  topicCmd,
-			Params:   []string{ch.name},
+			Params:   []string{u.Nick, ch.name},
 			Trailing: topic,
 		},
 		&irc.Message{

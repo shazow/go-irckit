@@ -76,7 +76,7 @@ func TestServerMultiUser(t *testing.T) {
 
 	c1.receive <- irc.ParseMessage("JOIN #chat")
 	expectReply(t, c1, ":foo!root@client1 JOIN #chat")
-	expectReply(t, c1, ":testserver 331 #chat :No topic is set")
+	expectReply(t, c1, ":testserver 331 foo #chat :No topic is set")
 	expectReply(t, c1, ":testserver 353 foo = #chat :foo")
 	expectReply(t, c1, ":testserver 366 foo :End of /NAMES list.")
 	expectEvent(t, events, NewChanEvent)
@@ -84,7 +84,7 @@ func TestServerMultiUser(t *testing.T) {
 
 	c2.receive <- irc.ParseMessage("JOIN #chat")
 	expectReply(t, c2, ":baz!root@client2 JOIN #chat")
-	expectReply(t, c2, ":testserver 331 #chat :No topic is set")
+	expectReply(t, c2, ":testserver 331 baz #chat :No topic is set")
 	expectReply(t, c2, ":testserver 353 baz = #chat :baz foo")
 	expectReply(t, c2, ":testserver 366 baz :End of /NAMES list.")
 	expectEvent(t, events, JoinEvent)
@@ -138,7 +138,7 @@ func TestServerMultiUser(t *testing.T) {
 
 	c2.receive <- irc.ParseMessage("JOIN #blah")
 	expectReply(t, c2, ":baz!root@client2 JOIN #blah")
-	expectReply(t, c2, ":testserver 331 #blah :No topic is set")
+	expectReply(t, c2, ":testserver 331 baz #blah :No topic is set")
 	expectReply(t, c2, ":testserver 353 baz = #blah :baz")
 	expectReply(t, c2, ":testserver 366 baz :End of /NAMES list.")
 	expectEvent(t, events, NewChanEvent)
@@ -152,6 +152,10 @@ func TestServerMultiUser(t *testing.T) {
 	if channel2.Len() != 1 {
 		t.Errorf("expected #chat to be len 1; got: %v", channel2.Users())
 	}
+
+	c2.receive <- irc.ParseMessage("WHO #blah")
+	expectReply(t, c2, ":testserver 352 baz #blah root client2 * baz H :0 Baz Quux")
+	expectReply(t, c2, ":testserver 315 baz #blah :End of /WHO list.")
 
 	c2.receive <- irc.ParseMessage("PART #blah")
 	expectReply(t, c2, ":baz!root@client2 PART #blah")

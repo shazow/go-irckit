@@ -252,6 +252,35 @@ func (s *server) guestNick() string {
 	return fmt.Sprintf("Guest%d", s.count)
 }
 
+func (s *server) who(u *User, mask string, op bool) []*irc.Message {
+	endMsg := &irc.Message{
+		Prefix:   s.Prefix(),
+		Params:   []string{u.Nick, mask},
+		Command:  irc.RPL_ENDOFWHO,
+		Trailing: "End of /WHO list.",
+	}
+
+	// TODO: Handle arbitrary masks, not just channels
+	ch, exists := s.HasChannel(mask)
+	if !exists {
+		return []*irc.Message{endMsg}
+	}
+
+	r := make([]*irc.Message, 0, ch.Len()+1)
+	for _, other := range ch.Users() {
+		// <me> <channel> <user> <host> <server> <nick> [H/G]: 0 <real>
+		r = append(r, &irc.Message{
+			Prefix:   s.Prefix(),
+			Params:   []string{u.Nick, mask, other.User, other.Host, "*", other.Nick, "H"},
+			Command:  irc.RPL_WHOREPLY,
+			Trailing: "0 " + other.Real,
+		})
+	}
+
+	r = append(r, endMsg)
+	return r
+}
+
 // names lists all names for a given channel
 func (s *server) names(u *User, channels ...string) []*irc.Message {
 	// TODO: Support full list?
@@ -375,6 +404,17 @@ func (s *server) handle(u *User) {
 				continue
 			}
 			err = u.Encode(s.names(u, msg.Params[0])...)
+		case irc.WHO:
+			if len(msg.Params) < 1 {
+				u.Encode(&irc.Message{
+					Prefix:  s.Prefix(),
+					Command: irc.ERR_NEEDMOREPARAMS,
+					Params:  []string{msg.Command},
+				})
+				continue
+			}
+			opFilter := len(msg.Params) >= 2 && msg.Params[1] == "o"
+			err = u.Encode(s.who(u, msg.Params[0], opFilter)...)
 		case irc.PRIVMSG:
 			if len(msg.Params) < 1 {
 				u.Encode(&irc.Message{
