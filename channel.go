@@ -37,6 +37,9 @@ type Channel interface {
 	// Message transmits a message from a User to the channel (handler for PRIVMSG).
 	Message(u *User, text string)
 
+	// Unlink will disassociate the Channel from its Server.
+	Unlink()
+
 	// Len returns the number of Users in the channel.
 	Len() int
 
@@ -45,9 +48,9 @@ type Channel interface {
 }
 
 type channel struct {
-	Prefixer
 	Publisher
-	name string
+	name   string
+	server Server
 
 	mu       sync.RWMutex
 	topic    string
@@ -55,13 +58,17 @@ type channel struct {
 }
 
 // NewChannel returns a Channel implementation for a given Server.
-func NewChannel(prefixer Prefixer, name string) Channel {
+func NewChannel(server Server, name string) Channel {
 	return &channel{
-		Prefixer:  prefixer,
 		Publisher: SyncPublisher(),
+		server:    server,
 		name:      name,
 		usersIdx:  map[*User]struct{}{},
 	}
+}
+
+func (ch channel) Prefix() *irc.Prefix {
+	return ch.server.Prefix()
 }
 
 func (ch *channel) String() string {
@@ -119,9 +126,15 @@ func (ch *channel) Part(u *User, text string) {
 	u.Lock()
 	delete(u.channels, ch)
 	u.Unlock()
+	ch.server.Publish(&event{PartEvent, ch.server, ch, u, msg})
 	if n == 0 {
-		ch.Publish(&event{EmptyChanEvent, nil, ch, u, nil})
+		ch.Publish(&event{EmptyChanEvent, ch.server, ch, u, nil})
 	}
+}
+
+// Unlink will disassociate the Channel from the Server.
+func (ch *channel) Unlink() {
+	ch.server.UnlinkChannel(ch)
 }
 
 // Close will evict all users in the channel.

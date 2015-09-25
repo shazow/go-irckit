@@ -135,4 +135,32 @@ func TestServerMultiUser(t *testing.T) {
 	if channel.Len() != 1 {
 		t.Errorf("expected #chat to be len 1; got: %v", channel.Users())
 	}
+
+	c2.receive <- irc.ParseMessage("JOIN #blah")
+	expectReply(t, c2, ":baz!root@client2 JOIN #blah")
+	expectReply(t, c2, ":testserver 331 #blah :No topic is set")
+	expectReply(t, c2, ":testserver 353 baz = #blah :baz")
+	expectReply(t, c2, ":testserver 366 baz :End of /NAMES list.")
+	expectEvent(t, events, NewChanEvent)
+	expectEvent(t, events, JoinEvent)
+
+	u2, _ := srv.HasUser("baz")
+	channel2 := srv.Channel("#blah")
+	if len(u2.Channels()) != 2 {
+		t.Errorf("expected 2 channels for baz; got: %v", u2.Channels())
+	}
+	if channel2.Len() != 1 {
+		t.Errorf("expected #chat to be len 1; got: %v", channel2.Users())
+	}
+
+	c2.receive <- irc.ParseMessage("PART #blah")
+	expectReply(t, c2, ":baz!root@client2 PART #blah")
+	expectEvent(t, events, PartEvent)
+
+	if len(u2.Channels()) != 1 {
+		t.Errorf("expected 1 channel for baz; got: %v", u2.Channels())
+	}
+	if channel2.Len() != 0 {
+		t.Errorf("expected #chat to be len 1; got: %v", channel2.Users())
+	}
 }

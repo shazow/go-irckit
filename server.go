@@ -51,7 +51,7 @@ type Server interface {
 	// exists. Once removed, the server is free to create a fresh channel with
 	// the same ID. The server is not responsible for evicting members of an
 	// unlinked channel.
-	UnlinkChannel(Channel) bool
+	UnlinkChannel(Channel)
 }
 
 // ServerConfig produces a Server setup with configuration options.
@@ -204,7 +204,7 @@ func (s *server) cleanupEmpty() {
 			continue
 		}
 		if ch.Len() != 0 {
-			// Not empty
+			// Not empty.
 			s.Unlock()
 			continue
 		}
@@ -214,7 +214,7 @@ func (s *server) cleanupEmpty() {
 }
 
 // UnlinkChannel unlinks the channel from the server's storage, returns whether it existed.
-func (s *server) UnlinkChannel(ch Channel) bool {
+func (s *server) UnlinkChannel(ch Channel) {
 	s.Lock()
 	chStored := s.channels[ch.ID()]
 	r := chStored == ch
@@ -222,7 +222,6 @@ func (s *server) UnlinkChannel(ch Channel) bool {
 		delete(s.channels, ch.ID())
 	}
 	s.Unlock()
-	return r
 }
 
 // Connect starts the handshake for a new User and returns when complete or failed.
@@ -321,7 +320,6 @@ func (s *server) handle(u *User) {
 					continue
 				}
 				ch.Part(u, msg.Trailing)
-				s.Publish(&event{PartEvent, s, ch, u, msg})
 			}
 		case irc.QUIT:
 			partMsg = msg.Trailing
