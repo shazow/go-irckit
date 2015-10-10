@@ -530,7 +530,7 @@ func (s *server) handshake(u *User) error {
 				Prefix:   s.Prefix(),
 				Command:  irc.RPL_WELCOME,
 				Params:   []string{u.Nick},
-				Trailing: fmt.Sprintf("Welcome!"),
+				Trailing: fmt.Sprintf("Welcome! %s", u.Prefix()),
 			},
 		)
 	}

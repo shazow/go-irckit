@@ -169,15 +169,12 @@ func (ch *channel) Close() error {
 
 // Invite prompts the User to join the Channel on behalf of Prefixer.
 func (ch *channel) Invite(from Prefixer, u *User) error {
-	err := u.Encode(&irc.Message{
+	return u.Encode(&irc.Message{
 		Prefix:  from.Prefix(),
 		Command: irc.INVITE,
 		Params:  []string{u.Nick, ch.name},
 	})
-	if err != nil {
-		return err
-	}
-	return ch.Join(u)
+	// TODO: Save state that the user is invited?
 }
 
 // Topic sets the topic of the channel (handler for TOPIC).
@@ -188,6 +185,7 @@ func (ch *channel) Topic(from Prefixer, text string) {
 	msg := &irc.Message{
 		Prefix:   from.Prefix(),
 		Command:  irc.TOPIC,
+		Params:   []string{ch.name},
 		Trailing: text,
 	}
 	for to := range ch.usersIdx {
@@ -221,19 +219,17 @@ func (ch *channel) Join(u *User) error {
 		to.Encode(msg)
 	}
 
-	topicCmd := irc.RPL_TOPIC
-	if topic == "" {
-		topicCmd = irc.RPL_NOTOPIC
-		topic = "No topic is set"
-	}
-
-	err := u.Encode(
-		&irc.Message{
+	msgs := []*irc.Message{}
+	if topic != "" {
+		msgs = append(msgs, &irc.Message{
 			Prefix:   ch.Prefix(),
-			Command:  topicCmd,
+			Command:  irc.RPL_TOPIC,
 			Params:   []string{u.Nick, ch.name},
 			Trailing: topic,
-		},
+		})
+	}
+
+	msgs = append(msgs,
 		&irc.Message{
 			Prefix:   ch.Prefix(),
 			Command:  irc.RPL_NAMREPLY,
@@ -242,12 +238,13 @@ func (ch *channel) Join(u *User) error {
 		},
 		&irc.Message{
 			Prefix:   ch.Prefix(),
-			Params:   []string{u.Nick},
+			Params:   []string{u.Nick, ch.name},
 			Command:  irc.RPL_ENDOFNAMES,
 			Trailing: "End of /NAMES list.",
 		},
 	)
-	return err
+
+	return u.Encode(msgs...)
 }
 
 func (ch *channel) HasUser(u *User) bool {

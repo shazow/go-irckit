@@ -71,22 +71,29 @@ func TestServerMultiUser(t *testing.T) {
 	c2.receive <- irc.ParseMessage("USER root 0 * :Baz Quux")
 	expectEvent(t, events, ConnectEvent)
 
-	expectReply(t, c1, ":testserver 001 foo :Welcome!")
-	expectReply(t, c2, ":testserver 001 baz :Welcome!")
+	expectReply(t, c1, ":testserver 001 foo :Welcome! foo!root@client1")
+	expectReply(t, c2, ":testserver 001 baz :Welcome! baz!root@client2")
 
 	c1.receive <- irc.ParseMessage("JOIN #chat")
 	expectReply(t, c1, ":foo!root@client1 JOIN #chat")
-	expectReply(t, c1, ":testserver 331 foo #chat :No topic is set")
 	expectReply(t, c1, ":testserver 353 foo = #chat :foo")
-	expectReply(t, c1, ":testserver 366 foo :End of /NAMES list.")
+	expectReply(t, c1, ":testserver 366 foo #chat :End of /NAMES list.")
 	expectEvent(t, events, NewChanEvent)
 	expectEvent(t, events, JoinEvent)
 
+	channel := srv.Channel("#chat")
+	if channel.Len() != 1 {
+		t.Errorf("expected #chat to be len 1; got: %v", channel.Users())
+	}
+
+	channel.Topic(srv, "so topical")
+	expectReply(t, c1, ":testserver TOPIC #chat :so topical")
+
 	c2.receive <- irc.ParseMessage("JOIN #chat")
 	expectReply(t, c2, ":baz!root@client2 JOIN #chat")
-	expectReply(t, c2, ":testserver 331 baz #chat :No topic is set")
+	expectReply(t, c2, ":testserver 332 baz #chat :so topical")
 	expectReply(t, c2, ":testserver 353 baz = #chat :baz foo")
-	expectReply(t, c2, ":testserver 366 baz :End of /NAMES list.")
+	expectReply(t, c2, ":testserver 366 baz #chat :End of /NAMES list.")
 	expectEvent(t, events, JoinEvent)
 
 	// c1 notification of c2
@@ -99,7 +106,6 @@ func TestServerMultiUser(t *testing.T) {
 	if len(u1.Channels()) != 1 {
 		t.Errorf("expected 1 channel for foo; got: %v", u1.Channels())
 	}
-	channel := srv.Channel("#chat")
 	if channel.Len() != 2 {
 		t.Errorf("expected #chat to be len 2; got: %v", channel.Users())
 	}
@@ -138,9 +144,8 @@ func TestServerMultiUser(t *testing.T) {
 
 	c2.receive <- irc.ParseMessage("JOIN #blah")
 	expectReply(t, c2, ":baz!root@client2 JOIN #blah")
-	expectReply(t, c2, ":testserver 331 baz #blah :No topic is set")
 	expectReply(t, c2, ":testserver 353 baz = #blah :baz")
-	expectReply(t, c2, ":testserver 366 baz :End of /NAMES list.")
+	expectReply(t, c2, ":testserver 366 baz #blah :End of /NAMES list.")
 	expectEvent(t, events, NewChanEvent)
 	expectEvent(t, events, JoinEvent)
 
