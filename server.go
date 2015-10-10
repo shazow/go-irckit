@@ -64,6 +64,8 @@ type ServerConfig struct {
 	Publisher Publisher
 	// DiscardEmpty setting will start a goroutine to discard empty channels.
 	DiscardEmpty bool
+	// NewChannel overrides the constructor for a new Channel in a given Server and Name.
+	NewChannel func(s Server, name string) Channel
 }
 
 func (c ServerConfig) Server() Server {
@@ -176,7 +178,11 @@ func (s *server) Channel(name string) Channel {
 	id := ID(name)
 	ch, ok := s.channels[id]
 	if !ok {
-		ch = NewChannel(s, name)
+		newFn := NewChannel
+		if s.config.NewChannel != nil {
+			newFn = s.config.NewChannel
+		}
+		ch = newFn(s, name)
 		id = ch.ID()
 		s.channels[id] = ch
 		s.Unlock()
