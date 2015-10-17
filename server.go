@@ -12,6 +12,8 @@ import (
 
 var ErrHandshakeFailed = errors.New("handshake failed")
 
+var defaultVersion = "go-irckit"
+
 const handshakeMsgTolerance = 5
 
 // ID will normalize a name to be used as a unique identifier for comparison.
@@ -58,6 +60,8 @@ type Server interface {
 type ServerConfig struct {
 	// Name is used as the prefix for the server.
 	Name string
+	// Version string of the server (default: go-irckit).
+	Version string
 	// InviteOnly prevents regular users from joining and making new channels.
 	InviteOnly bool
 	// Publisher to use. If nil, a new SyncPublisher will be used.
@@ -508,9 +512,6 @@ func (s *server) handshake(u *User) error {
 		case irc.USER:
 			u.User = msg.Params[0]
 			u.Real = msg.Trailing
-			if u.Nick == "" {
-				u.Nick = u.User
-			}
 		}
 
 		if u.Nick == "" || u.User == "" {
@@ -531,12 +532,34 @@ func (s *server) handshake(u *User) error {
 			continue
 		}
 
+		version := s.config.Version
+		if version == "" {
+			version = defaultVersion
+		}
 		return u.Encode(
 			&irc.Message{
 				Prefix:   s.Prefix(),
 				Command:  irc.RPL_WELCOME,
 				Params:   []string{u.Nick},
 				Trailing: fmt.Sprintf("Welcome! %s", u.Prefix()),
+			},
+			&irc.Message{
+				Prefix:   s.Prefix(),
+				Command:  irc.RPL_YOURHOST,
+				Params:   []string{u.Nick},
+				Trailing: fmt.Sprintf("Your host is %s, running version %s", s.config.Name, version),
+			},
+			&irc.Message{
+				Prefix:   s.Prefix(),
+				Command:  irc.RPL_CREATED,
+				Params:   []string{u.Nick},
+				Trailing: fmt.Sprintf("This server was created %s", s.created.Format(time.UnixDate)),
+			},
+			&irc.Message{
+				Prefix:   s.Prefix(),
+				Command:  irc.RPL_MYINFO,
+				Params:   []string{u.Nick},
+				Trailing: fmt.Sprintf("%s %s o o", s.config.Name, version),
 			},
 		)
 	}

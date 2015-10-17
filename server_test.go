@@ -1,6 +1,7 @@
 package irckit
 
 import (
+	"regexp"
 	"testing"
 	"time"
 
@@ -14,7 +15,7 @@ var expectTimeout = time.Second * 1
 func expectReply(t *testing.T, conn *mockConn, expect string) {
 	select {
 	case msg := <-conn.send:
-		if msg.String() != expect {
+		if !regexp.MustCompile(expect).MatchString(msg.String()) {
 			t.Errorf("\ngot\t\t%q\nwant\t%q", msg, expect)
 		}
 	case <-time.After(expectTimeout):
@@ -72,7 +73,13 @@ func TestServerMultiUser(t *testing.T) {
 	expectEvent(t, events, ConnectEvent)
 
 	expectReply(t, c1, ":testserver 001 foo :Welcome! foo!root@client1")
+	expectReply(t, c1, ":testserver 002 foo :Your host is .*")
+	expectReply(t, c1, ":testserver 003 foo :This server was created .*")
+	expectReply(t, c1, ":testserver 004 foo :.*")
 	expectReply(t, c2, ":testserver 001 baz :Welcome! baz!root@client2")
+	expectReply(t, c2, ":testserver 002 baz :Your host is .*")
+	expectReply(t, c2, ":testserver 003 baz :This server was created .*")
+	expectReply(t, c2, ":testserver 004 baz :.*")
 
 	c1.receive <- irc.ParseMessage("JOIN #chat")
 	expectReply(t, c1, ":foo!root@client1 JOIN #chat")
@@ -159,7 +166,7 @@ func TestServerMultiUser(t *testing.T) {
 	}
 
 	c2.receive <- irc.ParseMessage("WHO #blah")
-	expectReply(t, c2, ":testserver 352 baz #blah root client2 * baz H :0 Baz Quux")
+	expectReply(t, c2, ":testserver 352 baz #blah root client2 \\* baz H :0 Baz Quux")
 	expectReply(t, c2, ":testserver 315 baz #blah :End of /WHO list.")
 
 	c2.receive <- irc.ParseMessage("PART #blah")
