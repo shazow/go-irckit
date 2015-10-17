@@ -76,10 +76,12 @@ func TestServerMultiUser(t *testing.T) {
 	expectReply(t, c1, ":testserver 002 foo :Your host is .*")
 	expectReply(t, c1, ":testserver 003 foo :This server was created .*")
 	expectReply(t, c1, ":testserver 004 foo :.*")
+	expectReply(t, c1, ":testserver 251 foo :There are 1 users and 0 services on 1 server.")
 	expectReply(t, c2, ":testserver 001 baz :Welcome! baz!root@client2")
 	expectReply(t, c2, ":testserver 002 baz :Your host is .*")
 	expectReply(t, c2, ":testserver 003 baz :This server was created .*")
 	expectReply(t, c2, ":testserver 004 baz :.*")
+	expectReply(t, c2, ":testserver 251 baz :There are 2 users and 0 services on 1 server.")
 
 	c1.receive <- irc.ParseMessage("JOIN #chat")
 	expectReply(t, c1, ":foo!root@client1 JOIN #chat")

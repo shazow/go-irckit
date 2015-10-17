@@ -262,6 +262,13 @@ func (s *server) guestNick() string {
 	return fmt.Sprintf("Guest%d", s.count)
 }
 
+// Len returns the number of users connected to the server.
+func (s *server) Len() int {
+	s.RLock()
+	defer s.RUnlock()
+	return len(s.users)
+}
+
 func (s *server) who(u *User, mask string, op bool) []*irc.Message {
 	endMsg := &irc.Message{
 		Prefix:   s.Prefix(),
@@ -560,6 +567,13 @@ func (s *server) handshake(u *User) error {
 				Command:  irc.RPL_MYINFO,
 				Params:   []string{u.Nick},
 				Trailing: fmt.Sprintf("%s %s o o", s.config.Name, version),
+			},
+
+			&irc.Message{
+				Prefix:   s.Prefix(),
+				Command:  irc.RPL_LUSERCLIENT,
+				Params:   []string{u.Nick},
+				Trailing: fmt.Sprintf("There are %d users and 0 services on 1 servers", s.Len()),
 			},
 		)
 	}
