@@ -26,6 +26,7 @@ type Options struct {
 	Bind    string `long:"bind" description:"Bind address to listen on." value-name:"[HOST]:PORT" default:":6667"`
 	Pprof   string `long:"pprof" description:"Bind address to serve pprof for profiling." value-name:"[HOST]:PORT"`
 	Name    string `long:"name" description:"Server name." default:"irckit-demo"`
+	Motd    string `long:"motd" description:"Message of the day."`
 	Verbose []bool `short:"v" long:"verbose" description:"Show verbose logging."`
 	Version bool   `long:"version"`
 }
@@ -77,7 +78,14 @@ func main() {
 	}
 	defer socket.Close()
 
-	srv := irckit.NewServer(options.Name)
+	motd := []string{}
+	if options.Motd != "" {
+		motd = append(motd, options.Motd)
+	}
+	srv := irckit.ServerConfig{
+		Name: options.Name,
+		Motd: motd,
+	}.Server()
 	go start(srv, socket)
 
 	fmt.Printf("Listening for connections on %v\n", socket.Addr().String())

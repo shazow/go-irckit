@@ -55,7 +55,10 @@ func TestServerWelcome(t *testing.T) {
 
 func TestServerMultiUser(t *testing.T) {
 	events := make(chan Event, 10)
-	srv := NewServer(testServerName)
+	srv := ServerConfig{
+		Name: testServerName,
+		Motd: []string{"I serve, therefore I am."},
+	}.Server()
 	srv.Subscribe(events)
 	defer srv.Close()
 
@@ -77,11 +80,17 @@ func TestServerMultiUser(t *testing.T) {
 	expectReply(t, c1, ":testserver 003 foo :This server was created .*")
 	expectReply(t, c1, ":testserver 004 foo :.*")
 	expectReply(t, c1, ":testserver 251 foo :There are 1 users and 0 services on 1 server.")
+	expectReply(t, c1, ":testserver 375 foo :- testserver Message of the Day -")
+	expectReply(t, c1, ":testserver 372 foo :- I serve, therefore I am.")
+	expectReply(t, c1, ":testserver 376 foo :End of /MOTD command.")
 	expectReply(t, c2, ":testserver 001 baz :Welcome! baz!root@client2")
 	expectReply(t, c2, ":testserver 002 baz :Your host is .*")
 	expectReply(t, c2, ":testserver 003 baz :This server was created .*")
 	expectReply(t, c2, ":testserver 004 baz :.*")
 	expectReply(t, c2, ":testserver 251 baz :There are 2 users and 0 services on 1 server.")
+	expectReply(t, c2, ":testserver 375 baz :- testserver Message of the Day -")
+	expectReply(t, c2, ":testserver 372 baz :- I serve, therefore I am.")
+	expectReply(t, c2, ":testserver 376 baz :End of /MOTD command.")
 
 	c1.receive <- irc.ParseMessage("JOIN #chat")
 	expectReply(t, c1, ":foo!root@client1 JOIN #chat")

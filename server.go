@@ -62,6 +62,8 @@ type ServerConfig struct {
 	Name string
 	// Version string of the server (default: go-irckit).
 	Version string
+	// Motd is the message of the day for the server, list of message lines where each line should be max 80 chars.
+	Motd []string
 	// InviteOnly prevents regular users from joining and making new channels.
 	InviteOnly bool
 	// Publisher to use. If nil, a new SyncPublisher will be used.
@@ -298,6 +300,77 @@ func (s *server) who(u *User, mask string, op bool) []*irc.Message {
 	return r
 }
 
+func (s *server) welcome(u *User) []*irc.Message {
+	version := s.config.Version
+	if version == "" {
+		version = defaultVersion
+	}
+
+	r := []*irc.Message{
+		&irc.Message{
+			Prefix:   s.Prefix(),
+			Command:  irc.RPL_WELCOME,
+			Params:   []string{u.Nick},
+			Trailing: fmt.Sprintf("Welcome! %s", u.Prefix()),
+		},
+		&irc.Message{
+			Prefix:   s.Prefix(),
+			Command:  irc.RPL_YOURHOST,
+			Params:   []string{u.Nick},
+			Trailing: fmt.Sprintf("Your host is %s, running version %s", s.config.Name, version),
+		},
+		&irc.Message{
+			Prefix:   s.Prefix(),
+			Command:  irc.RPL_CREATED,
+			Params:   []string{u.Nick},
+			Trailing: fmt.Sprintf("This server was created %s", s.created.Format(time.UnixDate)),
+		},
+		&irc.Message{
+			Prefix:   s.Prefix(),
+			Command:  irc.RPL_MYINFO,
+			Params:   []string{u.Nick},
+			Trailing: fmt.Sprintf("%s %s o o", s.config.Name, version),
+		},
+		&irc.Message{
+			Prefix:   s.Prefix(),
+			Command:  irc.RPL_LUSERCLIENT,
+			Params:   []string{u.Nick},
+			Trailing: fmt.Sprintf("There are %d users and 0 services on 1 servers", s.Len()),
+		},
+	}
+	// Always include motd, even if it's empty? Seems some clients expect it (libpurple?).
+	r = append(r, s.motd(u)...)
+	return r
+}
+
+func (s *server) motd(u *User) []*irc.Message {
+	r := make([]*irc.Message, 0, len(s.config.Motd)+2)
+
+	r = append(r, &irc.Message{
+		Prefix:   s.Prefix(),
+		Command:  irc.RPL_MOTDSTART,
+		Params:   []string{u.Nick},
+		Trailing: fmt.Sprintf("- %s Message of the Day -", s.config.Name),
+	})
+
+	for _, line := range s.config.Motd {
+		r = append(r, &irc.Message{
+			Prefix:   s.Prefix(),
+			Command:  irc.RPL_MOTD,
+			Params:   []string{u.Nick},
+			Trailing: fmt.Sprintf("- %s", line),
+		})
+	}
+
+	r = append(r, &irc.Message{
+		Prefix:   s.Prefix(),
+		Command:  irc.RPL_ENDOFMOTD,
+		Params:   []string{u.Nick},
+		Trailing: "End of /MOTD command.",
+	})
+	return r
+}
+
 // names lists all names for a given channel
 func (s *server) names(u *User, channels ...string) []*irc.Message {
 	// TODO: Support full list?
@@ -411,6 +484,8 @@ func (s *server) handle(u *User) {
 					}
 				}
 			}
+		case irc.MOTD:
+			err = u.Encode(s.motd(u)...)
 		case irc.NAMES:
 			if len(msg.Params) < 1 {
 				u.Encode(&irc.Message{
@@ -539,43 +614,7 @@ func (s *server) handshake(u *User) error {
 			continue
 		}
 
-		version := s.config.Version
-		if version == "" {
-			version = defaultVersion
-		}
-		return u.Encode(
-			&irc.Message{
-				Prefix:   s.Prefix(),
-				Command:  irc.RPL_WELCOME,
-				Params:   []string{u.Nick},
-				Trailing: fmt.Sprintf("Welcome! %s", u.Prefix()),
-			},
-			&irc.Message{
-				Prefix:   s.Prefix(),
-				Command:  irc.RPL_YOURHOST,
-				Params:   []string{u.Nick},
-				Trailing: fmt.Sprintf("Your host is %s, running version %s", s.config.Name, version),
-			},
-			&irc.Message{
-				Prefix:   s.Prefix(),
-				Command:  irc.RPL_CREATED,
-				Params:   []string{u.Nick},
-				Trailing: fmt.Sprintf("This server was created %s", s.created.Format(time.UnixDate)),
-			},
-			&irc.Message{
-				Prefix:   s.Prefix(),
-				Command:  irc.RPL_MYINFO,
-				Params:   []string{u.Nick},
-				Trailing: fmt.Sprintf("%s %s o o", s.config.Name, version),
-			},
-
-			&irc.Message{
-				Prefix:   s.Prefix(),
-				Command:  irc.RPL_LUSERCLIENT,
-				Params:   []string{u.Nick},
-				Trailing: fmt.Sprintf("There are %d users and 0 services on 1 servers", s.Len()),
-			},
-		)
+		return u.Encode(s.welcome(u)...)
 	}
 	return ErrHandshakeFailed
 }
