@@ -416,6 +416,7 @@ func (s *server) handle(u *User) {
 			// Ignore empty messages
 			continue
 		}
+		// TODO: Move this giant switch statement into a command registry system, similar to https://godoc.org/github.com/shazow/ssh-chat/chat#Commands
 		switch msg.Command {
 		case irc.PART:
 			if len(msg.Params) < 1 {
