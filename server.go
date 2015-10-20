@@ -579,6 +579,10 @@ func (s *server) handshake(u *User) error {
 		if err != nil {
 			return err
 		}
+		if msg == nil {
+			// Empty message, ignore.
+			continue
+		}
 
 		if len(msg.Params) < 1 {
 			u.Encode(&irc.Message{
