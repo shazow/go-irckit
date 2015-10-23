@@ -14,7 +14,7 @@ var ErrHandshakeFailed = errors.New("handshake failed")
 
 var defaultVersion = "go-irckit"
 
-const handshakeMsgTolerance = 5
+const handshakeMsgTolerance = 20
 
 // ID will normalize a name to be used as a unique identifier for comparison.
 func ID(s string) string {
@@ -66,6 +66,9 @@ type ServerConfig struct {
 	Motd []string
 	// InviteOnly prevents regular users from joining and making new channels.
 	InviteOnly bool
+	// MaxNickLen is the maximum length for a NICK value (default: 32)
+	MaxNickLen int
+
 	// Publisher to use. If nil, a new SyncPublisher will be used.
 	Publisher Publisher
 	// DiscardEmpty setting will start a goroutine to discard empty channels.
@@ -78,6 +81,19 @@ func (c ServerConfig) Server() Server {
 	publisher := c.Publisher
 	if publisher == nil {
 		publisher = SyncPublisher()
+	}
+	if c.NewChannel == nil {
+		c.NewChannel = NewChannel
+	}
+
+	if c.Version == "" {
+		c.Version = defaultVersion
+	}
+	if c.Name == "" {
+		c.Name = "go-irckit"
+	}
+	if c.MaxNickLen == 0 {
+		c.MaxNickLen = 32
 	}
 
 	srv := &server{
@@ -140,6 +156,10 @@ func (s *server) HasUser(nick string) (*User, bool) {
 
 // Rename will attempt to rename the given user's Nick if it's available.
 func (s *server) RenameUser(u *User, newNick string) bool {
+	if len(newNick) > s.config.MaxNickLen {
+		newNick = newNick[:s.config.MaxNickLen]
+	}
+
 	s.Lock()
 	if _, exists := s.users[ID(newNick)]; exists {
 		s.Unlock()
@@ -184,10 +204,7 @@ func (s *server) Channel(name string) Channel {
 	id := ID(name)
 	ch, ok := s.channels[id]
 	if !ok {
-		newFn := NewChannel
-		if s.config.NewChannel != nil {
-			newFn = s.config.NewChannel
-		}
+		newFn := s.config.NewChannel
 		ch = newFn(s, name)
 		id = ch.ID()
 		s.channels[id] = ch
@@ -301,11 +318,6 @@ func (s *server) who(u *User, mask string, op bool) []*irc.Message {
 }
 
 func (s *server) welcome(u *User) []*irc.Message {
-	version := s.config.Version
-	if version == "" {
-		version = defaultVersion
-	}
-
 	r := []*irc.Message{
 		&irc.Message{
 			Prefix:   s.Prefix(),
@@ -317,7 +329,7 @@ func (s *server) welcome(u *User) []*irc.Message {
 			Prefix:   s.Prefix(),
 			Command:  irc.RPL_YOURHOST,
 			Params:   []string{u.Nick},
-			Trailing: fmt.Sprintf("Your host is %s, running version %s", s.config.Name, version),
+			Trailing: fmt.Sprintf("Your host is %s, running version %s", s.config.Name, s.config.Version),
 		},
 		&irc.Message{
 			Prefix:   s.Prefix(),
@@ -329,7 +341,7 @@ func (s *server) welcome(u *User) []*irc.Message {
 			Prefix:   s.Prefix(),
 			Command:  irc.RPL_MYINFO,
 			Params:   []string{u.Nick},
-			Trailing: fmt.Sprintf("%s %s o o", s.config.Name, version),
+			Trailing: fmt.Sprintf("%s %s o o", s.config.Name, s.config.Version),
 		},
 		&irc.Message{
 			Prefix:   s.Prefix(),
@@ -369,6 +381,24 @@ func (s *server) motd(u *User) []*irc.Message {
 		Trailing: "End of /MOTD command.",
 	})
 	return r
+}
+
+func (s *server) ison(u *User, nicks ...string) []*irc.Message {
+	on := make([]string, 0, len(nicks))
+	for _, nick := range nicks {
+		if _, ok := s.HasUser(nick); ok {
+			on = append(on, nick)
+		}
+	}
+
+	return []*irc.Message{
+		&irc.Message{
+			Prefix:   s.Prefix(),
+			Command:  irc.RPL_ISON,
+			Params:   []string{u.Nick},
+			Trailing: strings.Join(on, " "),
+		},
+	}
 }
 
 // names lists all names for a given channel
@@ -508,6 +538,16 @@ func (s *server) handle(u *User) {
 			}
 			opFilter := len(msg.Params) >= 2 && msg.Params[1] == "o"
 			err = u.Encode(s.who(u, msg.Params[0], opFilter)...)
+		case irc.ISON:
+			if len(msg.Params) < 1 {
+				u.Encode(&irc.Message{
+					Prefix:  s.Prefix(),
+					Command: irc.ERR_NEEDMOREPARAMS,
+					Params:  []string{msg.Command},
+				})
+				continue
+			}
+			err = u.Encode(s.ison(u, msg.Params...)...)
 		case irc.PRIVMSG:
 			if len(msg.Params) < 1 {
 				u.Encode(&irc.Message{
@@ -574,7 +614,7 @@ func (s *server) handshake(u *User) error {
 
 	// Read messages until we filled in USER details.
 	for i := handshakeMsgTolerance; i > 0; i-- {
-		// Consume 5 messages then give up.
+		// Consume N messages then give up.
 		msg, err := u.Decode()
 		if err != nil {
 			return err
@@ -604,6 +644,9 @@ func (s *server) handshake(u *User) error {
 		if u.Nick == "" || u.User == "" {
 			// Wait for both to be set before proceeding
 			continue
+		}
+		if len(u.Nick) > s.config.MaxNickLen {
+			u.Nick = u.Nick[:s.config.MaxNickLen]
 		}
 
 		ok := s.add(u)
