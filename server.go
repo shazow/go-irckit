@@ -30,6 +30,12 @@ type Server interface {
 	Prefixer
 	Publisher
 
+	// Name of the server (usually hostname).
+	Name() string
+
+	// Motd is the Message of the Day for the server.
+	Motd() []string
+
 	// Connect starts the handshake for a new user, blocks until it's completed or failed with an error.
 	Connect(*User) error
 
@@ -127,6 +133,14 @@ type server struct {
 	channelEvents chan Event
 
 	Publisher
+}
+
+func (s *server) Name() string {
+	return s.config.Name
+}
+
+func (s *server) Motd() []string {
+	return s.config.Motd
 }
 
 func (s *server) Close() error {
@@ -289,6 +303,7 @@ func (s *server) Len() int {
 }
 
 func (s *server) who(u *User, mask string, op bool) []*irc.Message {
+	// XXX: Cut this
 	endMsg := &irc.Message{
 		Prefix:   s.Prefix(),
 		Params:   []string{u.Nick, mask},
@@ -317,8 +332,8 @@ func (s *server) who(u *User, mask string, op bool) []*irc.Message {
 	return r
 }
 
-func (s *server) welcome(u *User) []*irc.Message {
-	r := []*irc.Message{
+func (s *server) welcome(u *User) error {
+	err := u.Encode(
 		&irc.Message{
 			Prefix:   s.Prefix(),
 			Command:  irc.RPL_WELCOME,
@@ -349,13 +364,16 @@ func (s *server) welcome(u *User) []*irc.Message {
 			Params:   []string{u.Nick},
 			Trailing: fmt.Sprintf("There are %d users and 0 services on 1 servers", s.Len()),
 		},
+	)
+	if err != nil {
+		return err
 	}
 	// Always include motd, even if it's empty? Seems some clients expect it (libpurple?).
-	r = append(r, s.motd(u)...)
-	return r
+	return CmdMotd(s, u, nil)
 }
 
 func (s *server) motd(u *User) []*irc.Message {
+	// XXX: Cut this
 	r := make([]*irc.Message, 0, len(s.config.Motd)+2)
 
 	r = append(r, &irc.Message{
@@ -384,6 +402,7 @@ func (s *server) motd(u *User) []*irc.Message {
 }
 
 func (s *server) ison(u *User, nicks ...string) []*irc.Message {
+	// XXX: Cut this.
 	on := make([]string, 0, len(nicks))
 	for _, nick := range nicks {
 		if _, ok := s.HasUser(nick); ok {
@@ -662,7 +681,7 @@ func (s *server) handshake(u *User) error {
 			continue
 		}
 
-		return u.Encode(s.welcome(u)...)
+		return s.welcome(u)
 	}
 	return ErrHandshakeFailed
 }
