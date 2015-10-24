@@ -46,23 +46,6 @@ func (cmds Commands) Run(s Server, u *User, msg *irc.Message) error {
 	return cmd.Call(s, u, msg)
 }
 
-func DefaultCommands() Commands {
-	cmds := Commands{}
-
-	cmds.Add(Handler{Command: irc.PART, Call: CmdPart, MinParams: 1})
-	cmds.Add(Handler{Command: irc.QUIT, Call: CmdQuit})
-	cmds.Add(Handler{Command: irc.PING, Call: CmdPing})
-	cmds.Add(Handler{Command: irc.JOIN, Call: CmdJoin, MinParams: 1})
-	cmds.Add(Handler{Command: irc.MOTD, Call: CmdMotd})
-	cmds.Add(Handler{Command: irc.NAMES, Call: CmdNames, MinParams: 1})
-	cmds.Add(Handler{Command: irc.WHO, Call: CmdWho, MinParams: 1})
-	cmds.Add(Handler{Command: irc.ISON, Call: CmdIson, MinParams: 1})
-	cmds.Add(Handler{Command: irc.PRIVMSG, Call: CmdPrivMsg, MinParams: 1})
-	cmds.Add(Handler{Command: irc.NICK, Call: CmdNick, MinParams: 1})
-
-	return cmds
-}
-
 // CmdPart is a handler for the /PART command.
 func CmdPart(s Server, u *User, msg *irc.Message) error {
 	// TODO: Handle 0
