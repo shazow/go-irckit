@@ -1,49 +1,89 @@
 package irckit
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/sorcix/irc"
 )
 
-// The error returned when an invalid command is issued.
-var ErrUnknownCommand = errors.New("unknown command")
+func DefaultCommands() Commands {
+	cmds := commands{}
 
-// Handler is a container for an irc.Message handler.
-type Handler struct {
-	// Command is the IRC command that Call handles.
-	Command string
-	// Handler is a function that takes the server, user who sent the message, and a message to perform some command.
-	Call func(s Server, u *User, msg *irc.Message) error
-	// MinParams is the minimum number of params required on the message.
-	MinParams int
-	// TODO: Add mode constraints?
-}
+	cmds.Add(Handler{Command: irc.ISON, Call: CmdIson, MinParams: 1})
+	cmds.Add(Handler{Command: irc.JOIN, Call: CmdJoin, MinParams: 1})
+	cmds.Add(Handler{Command: irc.MOTD, Call: CmdMotd})
+	cmds.Add(Handler{Command: irc.NAMES, Call: CmdNames, MinParams: 1})
+	cmds.Add(Handler{Command: irc.NICK, Call: CmdNick, MinParams: 1})
+	cmds.Add(Handler{Command: irc.PART, Call: CmdPart, MinParams: 1})
+	cmds.Add(Handler{Command: irc.PING, Call: CmdPing})
+	cmds.Add(Handler{Command: irc.PRIVMSG, Call: CmdPrivMsg, MinParams: 1})
+	cmds.Add(Handler{Command: irc.QUIT, Call: CmdQuit})
+	cmds.Add(Handler{Command: irc.WHO, Call: CmdWho, MinParams: 1})
 
-// Commands is a registry for command handlers
-type Commands map[string]Handler
+	// (Sync this list with https://github.com/shazow/go-irckit/issues/11)
+	//
+	// Commands left to implement:
+	// - [ ] ADMIN
+	// - [ ] AWAY
+	// - [ ] CNOTICE
+	// - [ ] CPRIVMSG
+	// - [ ] CONNECT
+	// - [ ] DIE
+	// - [ ] ENCAP
+	// - [ ] ERROR
+	// - [ ] HELP
+	// - [ ] INFO
+	// - [ ] INVITE
+	// - [x] ISON
+	// - [x] JOIN
+	// - [ ] KICK
+	// - [ ] KILL
+	// - [ ] KNOCK
+	// - [ ] LINKS
+	// - [ ] LIST
+	// - [ ] LUSERS
+	// - [ ] MODE
+	// - [x] MOTD
+	// - [x] NAMES
+	// - [ ] NAMESX
+	// - [x] NICK
+	// - [ ] NOTICE
+	// - [ ] OPER
+	// - [x] PART
+	// - [ ] PASS
+	// - [x] PING
+	// - [x] PONG
+	// - [x] PRIVMSG
+	// - [x] QUIT
+	// - [ ] REHASH
+	// - [ ] RESTART
+	// - [ ] RULES
+	// - [ ] SERVER
+	// - [ ] SERVICE
+	// - [ ] SERVLIST
+	// - [ ] SQUERY
+	// - [ ] SQUIT
+	// - [ ] SETNAME
+	// - [ ] SILENCE
+	// - [ ] STATS
+	// - [ ] SUMMON
+	// - [ ] TIME
+	// - [ ] TOPIC
+	// - [ ] TRACE
+	// - [ ] UHNAMES
+	// - [ ] USER
+	// - [ ] USERHOST
+	// - [ ] USERIP
+	// - [ ] USERS
+	// - [ ] VERSION
+	// - [ ] WALLOPS
+	// - [ ] WATCH
+	// - [x] WHO
+	// - [ ] WHOIS
+	// - [ ] WHOWAS
 
-// Add registers a Handler
-func (cmds Commands) Add(h Handler) {
-	cmds[h.Command] = h
-}
-
-// Run executes an Handler to the irc.Message's Command.
-func (cmds Commands) Run(s Server, u *User, msg *irc.Message) error {
-	cmd, ok := cmds[msg.Command]
-	if !ok {
-		return ErrUnknownCommand
-	}
-	if len(msg.Params) < cmd.MinParams {
-		return u.Encode(&irc.Message{
-			Prefix:  s.Prefix(),
-			Command: irc.ERR_NEEDMOREPARAMS,
-			Params:  []string{msg.Command},
-		})
-	}
-	return cmd.Call(s, u, msg)
+	return &cmds
 }
 
 // CmdPart is a handler for the /PART command.
