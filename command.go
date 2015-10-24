@@ -11,8 +11,9 @@ import (
 // The error returned when an invalid command is issued.
 var ErrUnknownCommand = errors.New("unknown command")
 
+// Handler is a container for an irc.Message handler.
 type Handler struct {
-	// Command is the IRC command that this is a handler for.
+	// Command is the IRC command that Call handles.
 	Command string
 	// Handler is a function that takes the server, user who sent the message, and a message to perform some command.
 	Call func(s Server, u *User, msg *irc.Message) error
@@ -21,12 +22,15 @@ type Handler struct {
 	// TODO: Add mode constraints?
 }
 
+// Commands is a registry for command handlers
 type Commands map[string]Handler
 
+// Add registers a Handler
 func (cmds Commands) Add(h Handler) {
 	cmds[h.Command] = h
 }
 
+// Run executes an Handler to the irc.Message's Command.
 func (cmds Commands) Run(s Server, u *User, msg *irc.Message) error {
 	cmd, ok := cmds[msg.Command]
 	if !ok {
@@ -59,6 +63,7 @@ func DefaultCommands() Commands {
 	return cmds
 }
 
+// CmdPart is a handler for the /PART command.
 func CmdPart(s Server, u *User, msg *irc.Message) error {
 	// TODO: Handle 0
 	channels := strings.Split(msg.Params[0], ",")
@@ -78,6 +83,7 @@ func CmdPart(s Server, u *User, msg *irc.Message) error {
 	return nil
 }
 
+// CmdQuit is a handler for the /QUIT command.
 func CmdQuit(s Server, u *User, msg *irc.Message) error {
 	u.Encode(&irc.Message{
 		Prefix:   u.Prefix(),
@@ -93,6 +99,7 @@ func CmdQuit(s Server, u *User, msg *irc.Message) error {
 	return nil
 }
 
+// CmdPing is a handler for the /PING command.
 func CmdPing(s Server, u *User, msg *irc.Message) error {
 	return u.Encode(&irc.Message{
 		Prefix:   s.Prefix(),
@@ -102,6 +109,7 @@ func CmdPing(s Server, u *User, msg *irc.Message) error {
 	})
 }
 
+// CmdJoin is a handler for the /JOIN command.
 func CmdJoin(s Server, u *User, msg *irc.Message) error {
 	// TODO: Handle invite-only
 	/*
@@ -123,6 +131,7 @@ func CmdJoin(s Server, u *User, msg *irc.Message) error {
 	return nil
 }
 
+// CmdMotd is a handler for the /MOTD command.
 func CmdMotd(s Server, u *User, _ *irc.Message) error {
 	motd := s.Motd()
 	r := make([]*irc.Message, 0, len(motd)+2)
@@ -152,6 +161,7 @@ func CmdMotd(s Server, u *User, _ *irc.Message) error {
 	return u.Encode(r...)
 }
 
+// CmdNames is a handler for the /NAMES command.
 func CmdNames(s Server, u *User, msg *irc.Message) error {
 	// TODO: Handle multiple channels? Queries?
 	channels := msg.Params
@@ -185,6 +195,7 @@ func CmdNames(s Server, u *User, msg *irc.Message) error {
 	return u.Encode(r...)
 }
 
+// CmdWho is a handler for the /WHO command.
 func CmdWho(s Server, u *User, msg *irc.Message) error {
 	// TODO: Use opFilter
 	//opFilter := len(msg.Params) >= 2 && msg.Params[1] == "o"
@@ -218,6 +229,7 @@ func CmdWho(s Server, u *User, msg *irc.Message) error {
 	return u.Encode(r...)
 }
 
+// CmdIson is a handler for the /ISON command.
 func CmdIson(s Server, u *User, msg *irc.Message) error {
 	nicks := msg.Params
 	on := make([]string, 0, len(nicks))
@@ -237,6 +249,7 @@ func CmdIson(s Server, u *User, msg *irc.Message) error {
 	)
 }
 
+// CmdPrivMsg is a handler for the /PRIVMSG command.
 func CmdPrivMsg(s Server, u *User, msg *irc.Message) error {
 	query := msg.Params[0]
 	if toChan, exists := s.HasChannel(query); exists {
@@ -261,6 +274,7 @@ func CmdPrivMsg(s Server, u *User, msg *irc.Message) error {
 	return nil
 }
 
+// CmdNick is a handler for the /NICK command.
 func CmdNick(s Server, u *User, msg *irc.Message) error {
 	s.RenameUser(u, msg.Params[0])
 	return nil
